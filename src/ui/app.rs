@@ -238,7 +238,8 @@ impl eframe::App for FileManagerApp {
                     egui::TextEdit::singleline(&mut self.state.onboarding_port)
                         .id("onb_port".into())
                         .desired_width(60.0)
-                        .hint_text("22"),
+                        .char_limit(5)
+                        .hint_text("port"),
                 );
             });
 
@@ -271,7 +272,11 @@ impl eframe::App for FileManagerApp {
                                 self.state.connect_host = self.state.onboarding_host.clone();
                                 self.state.connect_user = self.state.onboarding_user.clone();
                                 self.state.connect_pass = self.state.onboarding_pass.clone();
-                                self.state.connect_port = self.state.onboarding_port.clone();
+                                self.state.connect_port = if self.state.onboarding_port.is_empty() {
+                                    "22".into()
+                                } else {
+                                    self.state.onboarding_port.clone()
+                                };
                                 self.state.connect_protocol = 0;
                                 self.state.show_connect_dialog = true;
                             }

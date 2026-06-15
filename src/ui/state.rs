@@ -73,7 +73,7 @@ impl Default for AppState {
             onboarding_host: String::new(),
             onboarding_user: String::new(),
             onboarding_pass: String::new(),
-            onboarding_port: "22".into(),
+            onboarding_port: String::new(),
             connect_label: String::new(),
             connect_host: String::new(),
             connect_port: "22".into(),
