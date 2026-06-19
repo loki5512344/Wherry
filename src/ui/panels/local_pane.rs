@@ -1,14 +1,14 @@
-use egui::{RichText, Ui};
 use crate::domain::connection::ConnectionStatus;
 use crate::domain::file_entry::{EntryKind, FileEntry};
 use crate::domain::transfer::{TransferKind, TransferTask};
 use crate::fs::local;
 use crate::fs::remote::RemoteRegistry;
 use crate::transfer::queue::TransferQueue;
-use crate::ui::drag::{make_local_payload, DragPayload};
-use crate::ui::panels::file_pane::{file_table, FileTableResponse, format_size};
+use crate::ui::drag::{DragPayload, make_local_payload};
+use crate::ui::panels::file_pane::{FileTableResponse, file_table, format_size};
 use crate::ui::state::AppState;
 use crate::ui::theme::*;
+use egui::{RichText, Ui};
 use std::sync::Arc;
 
 fn parent_path(path: &str) -> String {
@@ -88,29 +88,24 @@ fn render_inner(ui: &mut Ui, state: &mut AppState) {
         .map(|t| t.status == ConnectionStatus::Connected)
         .unwrap_or(false);
 
-    let FileTableResponse { double_clicked, .. } = file_table(
-        ui,
-        "local_table",
-        &entries,
-        &mut selected,
-        |entry| {
+    let FileTableResponse { double_clicked, .. } =
+        file_table(ui, "local_table", &entries, &mut selected, |entry| {
             if has_connection {
                 make_local_payload(entry)
             } else {
                 None
             }
-        },
-    );
+        });
 
     state.local_selected = selected;
 
     if let Some(name) = double_clicked {
         if name == ".." {
             state.local_path = parent_path(&state.local_path);
-        } else if let Some(entry) = state.local_entries.iter().find(|e| e.name == name) {
-            if entry.kind == EntryKind::Dir {
-                state.local_path = entry.path.clone();
-            }
+        } else if let Some(entry) = state.local_entries.iter().find(|e| e.name == name)
+            && entry.kind == EntryKind::Dir
+        {
+            state.local_path = entry.path.clone();
         }
         refresh_local(state);
     }
@@ -122,7 +117,12 @@ fn render_inner(ui: &mut Ui, state: &mut AppState) {
 fn render_path_bar(ui: &mut Ui, state: &mut AppState) {
     let frame = egui::Frame::none()
         .fill(BG_PANEL)
-        .inner_margin(egui::Margin { left: 8.0, right: 8.0, top: 4.0, bottom: 4.0 });
+        .inner_margin(egui::Margin {
+            left: 8.0,
+            right: 8.0,
+            top: 4.0,
+            bottom: 4.0,
+        });
 
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -132,12 +132,14 @@ fn render_path_bar(ui: &mut Ui, state: &mut AppState) {
                 .to_string_lossy()
                 .to_string();
             let is_home = state.local_path == home;
-            let home_btn = egui::Button::new(
-                RichText::new("🏠").size(13.0)
-            )
-            .fill(if is_home { BG_ROW_SEL } else { egui::Color32::TRANSPARENT })
-            .rounding(4.0)
-            .min_size(egui::vec2(22.0, 22.0));
+            let home_btn = egui::Button::new(RichText::new("🏠").size(13.0))
+                .fill(if is_home {
+                    BG_ROW_SEL
+                } else {
+                    egui::Color32::TRANSPARENT
+                })
+                .rounding(4.0)
+                .min_size(egui::vec2(22.0, 22.0));
             if ui.add(home_btn).clicked() {
                 state.local_path = home;
                 refresh_local(state);
@@ -159,9 +161,8 @@ fn render_path_bar(ui: &mut Ui, state: &mut AppState) {
                     ui.label(RichText::new(*part).color(TEXT_PRIMARY).size(12.0).strong());
                 } else {
                     let path_snap = acc.clone();
-                    let link = egui::Label::new(
-                        RichText::new(*part).color(TEXT_DIM).size(12.0)
-                    ).sense(egui::Sense::click());
+                    let link = egui::Label::new(RichText::new(*part).color(TEXT_DIM).size(12.0))
+                        .sense(egui::Sense::click());
                     if ui.add(link).clicked() {
                         state.local_path = path_snap;
                         refresh_local(state);
@@ -183,20 +184,24 @@ fn render_footer(ui: &mut Ui, state: &mut AppState) {
 
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
-            let count = state.local_entries.iter().filter(|e| e.name != "..").count();
+            let count = state
+                .local_entries
+                .iter()
+                .filter(|e| e.name != "..")
+                .count();
             let total_size: u64 = state.local_entries.iter().filter_map(|e| e.size).sum();
 
             ui.label(
                 RichText::new(format!("{} items", count))
                     .color(TEXT_DIM)
-                    .size(11.0)
+                    .size(11.0),
             );
 
             if total_size > 0 {
                 ui.label(
                     RichText::new(format!("({})", format_size(Some(total_size))))
                         .color(TEXT_HINT)
-                        .size(11.0)
+                        .size(11.0),
                 );
             }
 

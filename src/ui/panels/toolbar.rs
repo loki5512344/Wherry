@@ -1,6 +1,6 @@
-use egui::{Align, Layout, RichText, Ui};
 use crate::ui::state::AppState;
 use crate::ui::theme::*;
+use egui::{Align, Layout, RichText, Ui};
 
 pub fn render(ui: &mut Ui, state: &mut AppState) {
     let frame = egui::Frame::none()
@@ -112,34 +112,44 @@ fn render_history_popup(ui: &mut Ui, state: &mut AppState) {
                 .inner_margin(egui::Margin::same(8.0))
                 .show(ui, |ui| {
                     ui.set_width(260.0);
-                    ui.label(RichText::new("Recent Connections").color(TEXT_DIM).size(11.0));
+                    ui.label(
+                        RichText::new("Recent Connections")
+                            .color(TEXT_DIM)
+                            .size(11.0),
+                    );
                     ui.add_space(4.0);
                     if state.history.is_empty() {
                         ui.label(RichText::new("No history yet").color(TEXT_HINT));
                     } else {
-                        egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
-                            for entry in &state.history.clone() {
-                                let label = format!("{}@{}:{}", entry.user, entry.host, entry.port);
-                                let time = RichText::new(&entry.time).color(TEXT_HINT).size(10.0);
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new(&label).color(TEXT_PRIMARY).size(12.0),
+                        egui::ScrollArea::vertical()
+                            .max_height(160.0)
+                            .show(ui, |ui| {
+                                for entry in &state.history.clone() {
+                                    let label =
+                                        format!("{}@{}:{}", entry.user, entry.host, entry.port);
+                                    let time =
+                                        RichText::new(&entry.time).color(TEXT_HINT).size(10.0);
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                RichText::new(&label)
+                                                    .color(TEXT_PRIMARY)
+                                                    .size(12.0),
+                                            )
+                                            .fill(egui::Color32::TRANSPARENT)
+                                            .min_size(egui::vec2(240.0, 24.0)),
                                         )
-                                        .fill(egui::Color32::TRANSPARENT)
-                                        .min_size(egui::vec2(240.0, 24.0)),
-                                    )
-                                    .clicked()
-                                {
-                                    state.connect_host = entry.host.clone();
-                                    state.connect_user = entry.user.clone();
-                                    state.connect_port = entry.port.to_string();
-                                    state.show_connect_dialog = true;
-                                    state.show_history = false;
+                                        .clicked()
+                                    {
+                                        state.connect_host = entry.host.clone();
+                                        state.connect_user = entry.user.clone();
+                                        state.connect_port = entry.port.to_string();
+                                        state.show_connect_dialog = true;
+                                        state.show_history = false;
+                                    }
+                                    ui.label(time);
                                 }
-                                ui.label(time);
-                            }
-                        });
+                            });
                     }
                     ui.add_space(4.0);
                     if ui
@@ -156,7 +166,11 @@ fn render_history_popup(ui: &mut Ui, state: &mut AppState) {
 }
 
 fn toolbar_btn(ui: &mut Ui, label: &str, active: bool, mut on_click: impl FnMut()) {
-    let fill = if active { BG_TAB_ACTIVE } else { egui::Color32::TRANSPARENT };
+    let fill = if active {
+        BG_TAB_ACTIVE
+    } else {
+        egui::Color32::TRANSPARENT
+    };
     let text_col = if active { ACCENT } else { TEXT_PRIMARY };
     let btn = egui::Button::new(RichText::new(label).color(text_col).size(12.0))
         .fill(fill)

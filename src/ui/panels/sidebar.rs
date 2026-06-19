@@ -1,8 +1,8 @@
 //! Левая боковая панель — bookmarks + места
-use egui::{RichText, Ui};
+use crate::ui::panels::local_pane::refresh_local;
 use crate::ui::state::AppState;
 use crate::ui::theme::*;
-use crate::ui::panels::local_pane::refresh_local;
+use egui::{RichText, Ui};
 
 pub fn render(ui: &mut Ui, state: &mut AppState) {
     let frame = egui::Frame::none()
@@ -69,12 +69,12 @@ pub fn render(ui: &mut Ui, state: &mut AppState) {
                     ui.label(
                         RichText::new("  No bookmarks yet")
                             .color(TEXT_HINT)
-                            .size(11.0)
+                            .size(11.0),
                     );
                     ui.label(
                         RichText::new("  Use ★ in file list")
                             .color(TEXT_HINT)
-                            .size(10.0)
+                            .size(10.0),
                     );
                 } else {
                     for bm in &custom {
@@ -104,23 +104,32 @@ fn section_divider(ui: &mut Ui) {
 }
 
 fn sidebar_item(ui: &mut Ui, icon: &str, label: &str, active: bool, mut on_click: impl FnMut()) {
-    let bg = if active { BG_ROW_SEL } else { egui::Color32::TRANSPARENT };
-    let text_col = if active { egui::Color32::WHITE } else { TEXT_PRIMARY };
+    let bg = if active {
+        BG_ROW_SEL
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    let text_col = if active {
+        egui::Color32::WHITE
+    } else {
+        TEXT_PRIMARY
+    };
 
     let resp = egui::Frame::none()
         .fill(bg)
         .rounding(4.0)
-        .inner_margin(egui::Margin { left: 10.0, right: 6.0, top: 2.0, bottom: 2.0 })
+        .inner_margin(egui::Margin {
+            left: 10.0,
+            right: 6.0,
+            top: 2.0,
+            bottom: 2.0,
+        })
         .show(ui, |ui| {
             ui.set_min_width(SIDEBAR_W - 8.0);
             ui.horizontal(|ui| {
                 ui.label(RichText::new(icon).size(12.0));
                 ui.add_space(6.0);
-                ui.label(
-                    RichText::new(label)
-                        .color(text_col)
-                        .size(12.0)
-                );
+                ui.label(RichText::new(label).color(text_col).size(12.0));
             });
         });
 
@@ -131,14 +140,14 @@ fn sidebar_item(ui: &mut Ui, icon: &str, label: &str, active: bool, mut on_click
 
 fn bookmark_icon(name: &str) -> &'static str {
     match name {
-        "Home"      => "🏠",
-        "Desktop"   => "🖥",
+        "Home" => "🏠",
+        "Desktop" => "🖥",
         "Documents" => "📄",
         "Downloads" => "⬇",
-        "Pictures"  => "🖼",
-        "Music"     => "🎵",
-        "Videos"    => "🎬",
-        _           => "📁",
+        "Pictures" => "🖼",
+        "Music" => "🎵",
+        "Videos" => "🎬",
+        _ => "📁",
     }
 }
 

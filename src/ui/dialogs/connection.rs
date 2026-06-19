@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::domain::connection::{ConnectionParams, Protocol};
 use crate::domain::file_entry::FileEntry;
 use crate::fs::remote::RemoteRegistry;
-use crate::protocols::{ftp::FtpClient, sftp::SftpClient, RemoteFs};
+use crate::protocols::{RemoteFs, ftp::FtpClient, sftp::SftpClient};
 use crate::storage::keychain;
 use crate::ui::state::{AppState, PendingConnect};
 use crate::ui::theme::*;
@@ -31,7 +31,8 @@ pub fn render(
         .order(egui::Order::Background)
         .show(ctx, |ui| {
             let r = ui.allocate_rect(screen, egui::Sense::click());
-            ui.painter().rect_filled(screen, 0.0, Color32::from_black_alpha(160));
+            ui.painter()
+                .rect_filled(screen, 0.0, Color32::from_black_alpha(160));
             if r.clicked() && !state.connect_loading {
                 state.show_connect_dialog = false;
             }
@@ -57,10 +58,16 @@ pub fn render(
 
                     // Заголовок
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("New Connection").color(TEXT_PRIMARY).size(16.0).strong());
+                        ui.label(
+                            RichText::new("New Connection")
+                                .color(TEXT_PRIMARY)
+                                .size(16.0)
+                                .strong(),
+                        );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let close = egui::Button::new(RichText::new("×").color(TEXT_HINT).size(14.0))
-                                .fill(Color32::TRANSPARENT);
+                            let close =
+                                egui::Button::new(RichText::new("×").color(TEXT_HINT).size(14.0))
+                                    .fill(Color32::TRANSPARENT);
                             if ui.add(close).clicked() {
                                 state.show_connect_dialog = false;
                             }
@@ -73,7 +80,11 @@ pub fn render(
                     ui.horizontal(|ui| {
                         for (i, p) in protocols.iter().enumerate() {
                             let active = state.connect_protocol == i;
-                            let bg = if active { ACCENT } else { Color32::from_rgb(40, 40, 44) };
+                            let bg = if active {
+                                ACCENT
+                            } else {
+                                Color32::from_rgb(40, 40, 44)
+                            };
                             let tc = if active { Color32::WHITE } else { TEXT_DIM };
                             let btn = egui::Button::new(RichText::new(*p).color(tc).size(12.0))
                                 .fill(bg)
@@ -90,7 +101,13 @@ pub fn render(
 
                     // Поля ввода
                     let field_w = ui.available_width();
-                    field(ui, "Label (optional)", &mut state.connect_label, field_w, false);
+                    field(
+                        ui,
+                        "Label (optional)",
+                        &mut state.connect_label,
+                        field_w,
+                        false,
+                    );
                     ui.add_space(8.0);
 
                     ui.horizontal(|ui| {
@@ -108,13 +125,21 @@ pub fn render(
                     if state.connect_protocol == 0 {
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
-                            field(ui, "Key path", &mut state.connect_key_path, field_w - 80.0 - 8.0, false);
+                            field(
+                                ui,
+                                "Key path",
+                                &mut state.connect_key_path,
+                                field_w - 80.0 - 8.0,
+                                false,
+                            );
                             ui.add_space(8.0);
                             // Browse placeholder — open system picker if rfd added
-                    let browse = egui::Button::new(RichText::new("Browse").color(TEXT_DIM).size(11.0))
-                                .fill(Color32::from_rgb(40, 40, 44))
-                                .min_size(egui::vec2(72.0, 32.0))
-                                .rounding(4.0);
+                            let browse = egui::Button::new(
+                                RichText::new("Browse").color(TEXT_DIM).size(11.0),
+                            )
+                            .fill(Color32::from_rgb(40, 40, 44))
+                            .min_size(egui::vec2(72.0, 32.0))
+                            .rounding(4.0);
                             ui.add_enabled(false, browse);
                         });
                     }
@@ -135,10 +160,11 @@ pub fn render(
 
                     // Кнопки
                     ui.horizontal(|ui| {
-                        let cancel = egui::Button::new(RichText::new("Cancel").color(TEXT_DIM).size(12.0))
-                            .fill(Color32::from_rgb(40, 40, 44))
-                            .rounding(6.0)
-                            .min_size(egui::vec2(90.0, 34.0));
+                        let cancel =
+                            egui::Button::new(RichText::new("Cancel").color(TEXT_DIM).size(12.0))
+                                .fill(Color32::from_rgb(40, 40, 44))
+                                .rounding(6.0)
+                                .min_size(egui::vec2(90.0, 34.0));
                         if ui.add(cancel).clicked() && !state.connect_loading {
                             state.show_connect_dialog = false;
                         }
@@ -151,7 +177,10 @@ pub fn render(
                                     "Connect"
                                 };
                                 let connect_btn = egui::Button::new(
-                                    RichText::new(connect_label).color(Color32::WHITE).size(12.0).strong()
+                                    RichText::new(connect_label)
+                                        .color(Color32::WHITE)
+                                        .size(12.0)
+                                        .strong(),
                                 )
                                 .fill(ACCENT)
                                 .rounding(6.0)
@@ -197,18 +226,22 @@ fn do_connect(
 
     let port: u16 = state.connect_port.parse().unwrap_or(match protocol {
         Protocol::Sftp => 22,
-        Protocol::Ftp  => 21,
+        Protocol::Ftp => 21,
         Protocol::Ftps => 990,
     });
 
     let params = ConnectionParams {
         id: uuid::Uuid::new_v4().to_string(),
         label: if state.connect_label.is_empty() {
-            format!("{} ({})", state.connect_host, match protocol {
-                Protocol::Sftp => "SFTP",
-                Protocol::Ftp  => "FTP",
-                Protocol::Ftps => "FTPS",
-            })
+            format!(
+                "{} ({})",
+                state.connect_host,
+                match protocol {
+                    Protocol::Sftp => "SFTP",
+                    Protocol::Ftp => "FTP",
+                    Protocol::Ftps => "FTPS",
+                }
+            )
         } else {
             state.connect_label.clone()
         },
@@ -216,8 +249,16 @@ fn do_connect(
         host: state.connect_host.clone(),
         port,
         username: state.connect_user.clone(),
-        password: if state.connect_pass.is_empty() { None } else { Some(state.connect_pass.clone()) },
-        key_path: if state.connect_key_path.is_empty() { None } else { Some(state.connect_key_path.clone()) },
+        password: if state.connect_pass.is_empty() {
+            None
+        } else {
+            Some(state.connect_pass.clone())
+        },
+        key_path: if state.connect_key_path.is_empty() {
+            None
+        } else {
+            Some(state.connect_key_path.clone())
+        },
     };
 
     let registry = registry.clone();
@@ -253,8 +294,13 @@ async fn connect_async(
                 )
             } else {
                 Arc::new(
-                    SftpClient::connect_password(&params.host, params.port, &params.username, &password)
-                        .map_err(|e| e.to_string())?,
+                    SftpClient::connect_password(
+                        &params.host,
+                        params.port,
+                        &params.username,
+                        &password,
+                    )
+                    .map_err(|e| e.to_string())?,
                 )
             }
         }

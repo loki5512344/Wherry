@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use egui::{Color32, CentralPanel, RichText, SidePanel, TopBottomPanel, Visuals};
+use egui::{CentralPanel, Color32, RichText, SidePanel, TopBottomPanel, Visuals};
 
 use crate::domain::connection::ConnectionStatus;
 use crate::domain::file_entry::{EntryKind, FileEntry};
@@ -8,9 +8,7 @@ use crate::domain::site::Site;
 use crate::fs::remote::RemoteRegistry;
 use crate::transfer::queue::TransferQueue;
 use crate::ui::dialogs::connection;
-use crate::ui::panels::{
-    local_pane, queue, remote_pane, sidebar, status_bar, tabs, toolbar,
-};
+use crate::ui::panels::{local_pane, queue, remote_pane, sidebar, status_bar, tabs, toolbar};
 use crate::ui::theme::*;
 
 pub struct FileManagerApp {
@@ -83,7 +81,8 @@ impl FileManagerApp {
                         self.state.status_message = format!("Connected to {}", params.host);
                         self.state.connect_loading = false;
                         self.state.show_connect_dialog = false;
-                        self.state.add_history(&params.host, params.port, &params.username);
+                        self.state
+                            .add_history(&params.host, params.port, &params.username);
                     }
                     Err(e) => {
                         self.state.status_message = format!("Connection failed: {}", e);
@@ -152,7 +151,9 @@ impl FileManagerApp {
     }
 
     fn active_tab_idx(&self) -> Option<usize> {
-        if self.state.tabs.is_empty() { return None; }
+        if self.state.tabs.is_empty() {
+            return None;
+        }
         let idx = self.state.active_tab.min(self.state.tabs.len() - 1);
         if self.state.tabs[idx].status == ConnectionStatus::Connected {
             Some(idx)
@@ -163,25 +164,25 @@ impl FileManagerApp {
 
     fn apply_visuals(&self, ctx: &egui::Context) {
         let mut vis = Visuals::dark();
-        vis.window_fill    = BG_PANEL;
-        vis.panel_fill     = BG_CONTENT;
+        vis.window_fill = BG_PANEL;
+        vis.panel_fill = BG_CONTENT;
         vis.extreme_bg_color = BG_BASE;
-        vis.code_bg_color  = BG_BASE;
+        vis.code_bg_color = BG_BASE;
         vis.override_text_color = Some(TEXT_PRIMARY);
         vis.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, BORDER);
-        vis.widgets.inactive.bg_fill         = Color32::from_rgb(36, 36, 40);
-        vis.widgets.hovered.bg_fill          = BG_ROW_HOVER;
-        vis.widgets.active.bg_fill           = ACCENT_DIM;
-        vis.selection.bg_fill                = BG_ROW_SEL;
-        vis.selection.stroke                 = egui::Stroke::new(1.0, ACCENT);
-        vis.window_rounding                  = egui::Rounding::same(8.0);
+        vis.widgets.inactive.bg_fill = Color32::from_rgb(36, 36, 40);
+        vis.widgets.hovered.bg_fill = BG_ROW_HOVER;
+        vis.widgets.active.bg_fill = ACCENT_DIM;
+        vis.selection.bg_fill = BG_ROW_SEL;
+        vis.selection.stroke = egui::Stroke::new(1.0, ACCENT);
+        vis.window_rounding = egui::Rounding::same(8.0);
         ctx.set_visuals(vis);
 
         let fonts = egui::FontDefinitions::default();
         ctx.set_fonts(fonts);
 
         let mut style = ctx.style().as_ref().clone();
-        style.spacing.item_spacing  = egui::vec2(4.0, 2.0);
+        style.spacing.item_spacing = egui::vec2(4.0, 2.0);
         style.spacing.button_padding = egui::vec2(8.0, 4.0);
         ctx.set_style(style);
     }
@@ -234,7 +235,11 @@ impl eframe::App for FileManagerApp {
             QUEUE_COLLAPSED_H
         };
         TopBottomPanel::bottom("queue_panel")
-            .frame(egui::Frame::none().fill(BG_QUEUE).stroke(egui::Stroke::new(1.0, BORDER)))
+            .frame(
+                egui::Frame::none()
+                    .fill(BG_QUEUE)
+                    .stroke(egui::Stroke::new(1.0, BORDER)),
+            )
             .resizable(false)
             .exact_height(q_h)
             .show(ctx, |ui| {
@@ -243,9 +248,11 @@ impl eframe::App for FileManagerApp {
 
         // ── Sidebar ───────────────────────────────────────────────────────────
         SidePanel::left("sidebar")
-            .frame(egui::Frame::none()
-                .fill(BG_PANEL)
-                .stroke(egui::Stroke::new(1.0, BORDER)))
+            .frame(
+                egui::Frame::none()
+                    .fill(BG_PANEL)
+                    .stroke(egui::Stroke::new(1.0, BORDER)),
+            )
             .resizable(true)
             .default_width(SIDEBAR_W)
             .width_range(120.0..=260.0)
@@ -295,10 +302,7 @@ impl eframe::App for FileManagerApp {
                                 let idx = self.state.active_tab.min(self.state.tabs.len() - 1);
 
                                 // Хедер панели
-                                let label = self.state.tabs[idx]
-                                    .params
-                                    .host
-                                    .clone();
+                                let label = self.state.tabs[idx].params.host.clone();
                                 pane_header(ui, &format!("REMOTE  ·  {}", label), half);
 
                                 remote_pane::render(
@@ -313,9 +317,7 @@ impl eframe::App for FileManagerApp {
                                 // Empty state
                                 pane_header(ui, "REMOTE", half);
                                 ui.with_layout(
-                                    egui::Layout::centered_and_justified(
-                                        egui::Direction::TopDown,
-                                    ),
+                                    egui::Layout::centered_and_justified(egui::Direction::TopDown),
                                     |ui| {
                                         ui.vertical_centered(|ui| {
                                             ui.add_space(ui.available_height() * 0.3);
@@ -327,9 +329,11 @@ impl eframe::App for FileManagerApp {
                                             );
                                             ui.add_space(4.0);
                                             ui.label(
-                                                RichText::new("Connect to a server to browse files")
-                                                    .color(TEXT_HINT)
-                                                    .size(12.0),
+                                                RichText::new(
+                                                    "Connect to a server to browse files",
+                                                )
+                                                .color(TEXT_HINT)
+                                                .size(12.0),
                                             );
                                             ui.add_space(16.0);
                                             let btn = egui::Button::new(
@@ -365,16 +369,16 @@ impl eframe::App for FileManagerApp {
 fn pane_header(ui: &mut egui::Ui, label: &str, width: f32) {
     egui::Frame::none()
         .fill(BG_BASE)
-        .inner_margin(egui::Margin { left: 10.0, right: 6.0, top: 4.0, bottom: 4.0 })
+        .inner_margin(egui::Margin {
+            left: 10.0,
+            right: 6.0,
+            top: 4.0,
+            bottom: 4.0,
+        })
         .show(ui, |ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(label)
-                        .color(TEXT_DIM)
-                        .size(10.0)
-                        .strong(),
-                );
+                ui.label(RichText::new(label).color(TEXT_DIM).size(10.0).strong());
             });
         });
 

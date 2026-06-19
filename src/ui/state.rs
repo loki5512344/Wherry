@@ -98,15 +98,36 @@ impl Default for AppState {
             show_bookmarks: false,
             show_history: false,
             bookmarks: vec![
-                Bookmark { name: "Home".into(),      path: home.clone() },
-                Bookmark { name: "Desktop".into(),   path: format!("{}/Desktop", home) },
-                Bookmark { name: "Documents".into(), path: format!("{}/Documents", home) },
-                Bookmark { name: "Downloads".into(), path: dirs::download_dir()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| format!("{}/Downloads", home)) },
-                Bookmark { name: "Pictures".into(),  path: format!("{}/Pictures", home) },
-                Bookmark { name: "Music".into(),     path: format!("{}/Music", home) },
-                Bookmark { name: "Videos".into(),    path: format!("{}/Videos", home) },
+                Bookmark {
+                    name: "Home".into(),
+                    path: home.clone(),
+                },
+                Bookmark {
+                    name: "Desktop".into(),
+                    path: format!("{}/Desktop", home),
+                },
+                Bookmark {
+                    name: "Documents".into(),
+                    path: format!("{}/Documents", home),
+                },
+                Bookmark {
+                    name: "Downloads".into(),
+                    path: dirs::download_dir()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|| format!("{}/Downloads", home)),
+                },
+                Bookmark {
+                    name: "Pictures".into(),
+                    path: format!("{}/Pictures", home),
+                },
+                Bookmark {
+                    name: "Music".into(),
+                    path: format!("{}/Music", home),
+                },
+                Bookmark {
+                    name: "Videos".into(),
+                    path: format!("{}/Videos", home),
+                },
             ],
             history: Vec::new(),
             connect_label: String::new(),
@@ -134,13 +155,17 @@ impl Default for AppState {
 
 impl AppState {
     pub fn active_tab_mut(&mut self) -> Option<&mut ConnectionTab> {
-        if self.tabs.is_empty() { return None; }
+        if self.tabs.is_empty() {
+            return None;
+        }
         let idx = self.active_tab.min(self.tabs.len() - 1);
         Some(&mut self.tabs[idx])
     }
 
     pub fn active_tab_ref(&self) -> Option<&ConnectionTab> {
-        if self.tabs.is_empty() { return None; }
+        if self.tabs.is_empty() {
+            return None;
+        }
         let idx = self.active_tab.min(self.tabs.len() - 1);
         Some(&self.tabs[idx])
     }
@@ -148,9 +173,17 @@ impl AppState {
     pub fn add_history(&mut self, host: &str, port: u16, user: &str) {
         use chrono::Local;
         let now = Local::now().format("%H:%M %d.%m").to_string();
-        self.history.insert(0, HistoryEntry {
-            host: host.into(), port, user: user.into(), time: now,
-        });
-        if self.history.len() > 20 { self.history.truncate(20); }
+        self.history.insert(
+            0,
+            HistoryEntry {
+                host: host.into(),
+                port,
+                user: user.into(),
+                time: now,
+            },
+        );
+        if self.history.len() > 20 {
+            self.history.truncate(20);
+        }
     }
 }

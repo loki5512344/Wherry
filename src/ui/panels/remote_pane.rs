@@ -6,17 +6,23 @@ use crate::domain::file_entry::{EntryKind, FileEntry};
 use crate::domain::transfer::{TransferKind, TransferTask};
 use crate::fs::remote::RemoteRegistry;
 use crate::transfer::queue::TransferQueue;
-use crate::ui::drag::{make_remote_payload, DragPayload};
-use crate::ui::panels::file_pane::{file_table, FileTableResponse, format_size};
+use crate::ui::drag::{DragPayload, make_remote_payload};
+use crate::ui::panels::file_pane::{FileTableResponse, file_table, format_size};
 use crate::ui::state::{AppState, PendingRemoteList};
 use crate::ui::theme::*;
 
 pub fn remote_parent(path: &str) -> String {
     let trimmed = path.trim_end_matches('/');
-    if trimmed.is_empty() || trimmed == "/" { return "/".into(); }
+    if trimmed.is_empty() || trimmed == "/" {
+        return "/".into();
+    }
     if let Some(idx) = trimmed.rfind('/') {
         let p = &trimmed[..idx];
-        if p.is_empty() { "/".into() } else { p.to_string() }
+        if p.is_empty() {
+            "/".into()
+        } else {
+            p.to_string()
+        }
     } else {
         "/".into()
     }
@@ -150,16 +156,21 @@ fn render_path_bar(
 ) {
     let frame = egui::Frame::none()
         .fill(BG_PANEL)
-        .inner_margin(egui::Margin { left: 8.0, right: 8.0, top: 4.0, bottom: 4.0 });
+        .inner_margin(egui::Margin {
+            left: 8.0,
+            right: 8.0,
+            top: 4.0,
+            bottom: 4.0,
+        });
 
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             // статус точка
             let (dot, dot_col) = match state.tabs[tab_idx].status {
-                ConnectionStatus::Connected    => ("●", GREEN),
+                ConnectionStatus::Connected => ("●", GREEN),
                 ConnectionStatus::Disconnected => ("○", TEXT_HINT),
-                ConnectionStatus::Connecting   => ("◐", YELLOW),
-                ConnectionStatus::Error(_)     => ("×", RED),
+                ConnectionStatus::Connecting => ("◐", YELLOW),
+                ConnectionStatus::Error(_) => ("×", RED),
             };
             ui.label(RichText::new(dot).color(dot_col).size(10.0));
             ui.add_space(4.0);
@@ -189,9 +200,8 @@ fn render_path_bar(
                 if is_last {
                     ui.label(RichText::new(*part).color(TEXT_PRIMARY).size(12.0).strong());
                 } else {
-                    let link = egui::Label::new(
-                        RichText::new(*part).color(TEXT_DIM).size(12.0)
-                    ).sense(egui::Sense::click());
+                    let link = egui::Label::new(RichText::new(*part).color(TEXT_DIM).size(12.0))
+                        .sense(egui::Sense::click());
                     if ui.add(link).clicked() {
                         state.tabs[tab_idx].remote_path = path_snap;
                         if !state.tabs[tab_idx].loading {
@@ -237,7 +247,7 @@ fn render_footer(
                 ui.label(
                     RichText::new(format!("({})", format_size(Some(total_size))))
                         .color(TEXT_HINT)
-                        .size(11.0)
+                        .size(11.0),
                 );
             }
 
@@ -246,10 +256,10 @@ fn render_footer(
                 let refresh = egui::Button::new(RichText::new("⟳").color(ACCENT).size(14.0))
                     .fill(egui::Color32::TRANSPARENT)
                     .min_size(egui::vec2(20.0, 20.0));
-                if ui.add(refresh).on_hover_text("Refresh").clicked() {
-                    if !state.tabs[tab_idx].loading {
-                        trigger_list(state, tab_idx, registry, rt_handle);
-                    }
+                if ui.add(refresh).on_hover_text("Refresh").clicked()
+                    && !state.tabs[tab_idx].loading
+                {
+                    trigger_list(state, tab_idx, registry, rt_handle);
                 }
             });
         });
@@ -289,5 +299,7 @@ pub fn trigger_list(
         *result_clone.lock().unwrap() = Some(r);
     });
 
-    state.pending_remote_list.push(PendingRemoteList { tab_idx, result });
+    state
+        .pending_remote_list
+        .push(PendingRemoteList { tab_idx, result });
 }

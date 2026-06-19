@@ -1,9 +1,9 @@
-use egui::{Color32, RichText, Ui};
-use crate::domain::transfer::{TaskState, TransferKind};
 use crate::domain::transfer::TransferTask;
+use crate::domain::transfer::{TaskState, TransferKind};
 use crate::ui::panels::file_pane::format_size;
 use crate::ui::state::AppState;
 use crate::ui::theme::*;
+use egui::{Color32, RichText, Ui};
 
 pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
     // Заголовок очереди (всегда виден)
@@ -15,7 +15,10 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
         ui.set_min_height(QUEUE_COLLAPSED_H);
         ui.horizontal_centered(|ui| {
             let arrow = if state.show_queue { "▼" } else { "▲" };
-            let n_active = tasks.iter().filter(|t| matches!(t.state, TaskState::Running | TaskState::Queued)).count();
+            let n_active = tasks
+                .iter()
+                .filter(|t| matches!(t.state, TaskState::Running | TaskState::Queued))
+                .count();
 
             let title = if n_active > 0 {
                 format!("{} Transfer Queue  ({})", arrow, n_active)
@@ -24,7 +27,10 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
             };
 
             let btn = egui::Button::new(
-                RichText::new(&title).color(TEXT_PRIMARY).size(12.0).strong()
+                RichText::new(&title)
+                    .color(TEXT_PRIMARY)
+                    .size(12.0)
+                    .strong(),
             )
             .fill(Color32::TRANSPARENT)
             .min_size(egui::vec2(0.0, QUEUE_COLLAPSED_H));
@@ -35,7 +41,8 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
 
             // Аггрегированная скорость справа
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let agg_speed: u64 = tasks.iter()
+                let agg_speed: u64 = tasks
+                    .iter()
                     .filter(|t| t.state == TaskState::Running)
                     .filter_map(|t| t.speed)
                     .sum();
@@ -44,19 +51,29 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
                     ui.label(
                         RichText::new(format!("{}/s", format_size(Some(agg_speed))))
                             .color(GREEN)
-                            .size(11.0)
+                            .size(11.0),
                     );
                 } else if !tasks.is_empty() {
-                    let done = tasks.iter().filter(|t| t.state == TaskState::Completed).count();
-                    let failed = tasks.iter().filter(|t| matches!(t.state, TaskState::Failed(_))).count();
+                    let done = tasks
+                        .iter()
+                        .filter(|t| t.state == TaskState::Completed)
+                        .count();
+                    let failed = tasks
+                        .iter()
+                        .filter(|t| matches!(t.state, TaskState::Failed(_)))
+                        .count();
                     ui.label(
                         RichText::new(format!("{}/{} done", done, tasks.len()))
                             .color(TEXT_DIM)
-                            .size(11.0)
+                            .size(11.0),
                     );
                     if failed > 0 {
                         ui.add_space(8.0);
-                        ui.label(RichText::new(format!("{} failed", failed)).color(RED).size(11.0));
+                        ui.label(
+                            RichText::new(format!("{} failed", failed))
+                                .color(RED)
+                                .size(11.0),
+                        );
                     }
                 }
             });
@@ -82,21 +99,26 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
 
 fn render_task(ui: &mut Ui, task: &TransferTask) {
     let bg = match &task.state {
-        TaskState::Completed       => Color32::from_rgb(22, 38, 24),
-        TaskState::Failed(_)       => Color32::from_rgb(38, 22, 22),
-        TaskState::Running         => Color32::from_rgb(22, 28, 42),
-        TaskState::Queued          => BG_QUEUE,
-        _                         => BG_QUEUE,
+        TaskState::Completed => Color32::from_rgb(22, 38, 24),
+        TaskState::Failed(_) => Color32::from_rgb(38, 22, 22),
+        TaskState::Running => Color32::from_rgb(22, 28, 42),
+        TaskState::Queued => BG_QUEUE,
+        _ => BG_QUEUE,
     };
 
     egui::Frame::none()
         .fill(bg)
-        .inner_margin(egui::Margin { left: 10.0, right: 10.0, top: 4.0, bottom: 4.0 })
+        .inner_margin(egui::Margin {
+            left: 10.0,
+            right: 10.0,
+            top: 4.0,
+            bottom: 4.0,
+        })
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 // стрелка вида
                 let (arrow, arrow_col) = match task.kind {
-                    TransferKind::Upload   => ("↑", ACCENT),
+                    TransferKind::Upload => ("↑", ACCENT),
                     TransferKind::Download => ("↓", GREEN),
                 };
                 ui.label(RichText::new(arrow).color(arrow_col).size(13.0).strong());
@@ -104,19 +126,21 @@ fn render_task(ui: &mut Ui, task: &TransferTask) {
 
                 // имя файла
                 ui.label(
-                    RichText::new(&task.file_name).color(TEXT_PRIMARY).size(12.0)
+                    RichText::new(&task.file_name)
+                        .color(TEXT_PRIMARY)
+                        .size(12.0),
                 );
 
                 // статус справа
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (state_str, state_col) = match &task.state {
-                        TaskState::Queued       => ("Queued",    TEXT_HINT),
-                        TaskState::Running      => ("Uploading", ACCENT),
-                        TaskState::Completed    => ("✓ Done",    GREEN),
-                        TaskState::Failed(_)    => ("× Failed",  RED),
-                        TaskState::Paused       => ("Paused",    YELLOW),
-                        TaskState::Cancelled    => ("Cancelled", TEXT_HINT),
-                        TaskState::Retrying(_)  => ("Retrying",  YELLOW),
+                        TaskState::Queued => ("Queued", TEXT_HINT),
+                        TaskState::Running => ("Uploading", ACCENT),
+                        TaskState::Completed => ("✓ Done", GREEN),
+                        TaskState::Failed(_) => ("× Failed", RED),
+                        TaskState::Paused => ("Paused", YELLOW),
+                        TaskState::Cancelled => ("Cancelled", TEXT_HINT),
+                        TaskState::Retrying(_) => ("Retrying", YELLOW),
                     };
                     ui.label(RichText::new(state_str).color(state_col).size(11.0));
                 });
@@ -128,7 +152,7 @@ fn render_task(ui: &mut Ui, task: &TransferTask) {
                 let bar_col = match &task.state {
                     TaskState::Completed => GREEN,
                     TaskState::Failed(_) => RED,
-                    _                   => ACCENT,
+                    _ => ACCENT,
                 };
 
                 let bar = egui::ProgressBar::new(pct)
@@ -144,26 +168,26 @@ fn render_task(ui: &mut Ui, task: &TransferTask) {
                         format_size(Some(task.total_bytes))
                     ))
                     .color(TEXT_DIM)
-                    .size(11.0)
+                    .size(11.0),
                 );
 
-                if let Some(speed) = task.speed {
-                    if speed > 0 {
-                        ui.label(
-                            RichText::new(format!("  {}/s", format_size(Some(speed))))
-                                .color(GREEN)
-                                .size(11.0)
-                        );
-                    }
+                if let Some(speed) = task.speed
+                    && speed > 0
+                {
+                    ui.label(
+                        RichText::new(format!("  {}/s", format_size(Some(speed))))
+                            .color(GREEN)
+                            .size(11.0),
+                    );
                 }
-                if let Some(eta) = task.eta_secs {
-                    if eta > 0 {
-                        ui.label(
-                            RichText::new(format!("  ETA {}s", eta))
-                                .color(TEXT_HINT)
-                                .size(10.0)
-                        );
-                    }
+                if let Some(eta) = task.eta_secs
+                    && eta > 0
+                {
+                    ui.label(
+                        RichText::new(format!("  ETA {}s", eta))
+                            .color(TEXT_HINT)
+                            .size(10.0),
+                    );
                 }
             });
 
