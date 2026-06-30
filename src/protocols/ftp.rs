@@ -3,12 +3,16 @@ use async_trait::async_trait;
 use futures_lite::io::{AsyncReadExt, AsyncWriteExt};
 use std::str::FromStr;
 use std::time::SystemTime;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt as TokioReadExt, AsyncWriteExt as TokioWriteExt};
 use tokio::sync::Mutex;
 
-use suppaftp::{AsyncFtpStream, list::File};
+use suppaftp::{AsyncFtpStream, list::File as FtpListFile};
 
-use super::RemoteFs;
+use super::{ProgressAction, RemoteFs};
 use crate::domain::file_entry::{EntryKind, FileEntry};
+
+const CHUNK_SIZE: usize = 64 * 1024;
 
 pub struct FtpClient {
     pub conn: Mutex<Option<AsyncFtpStream>>,
@@ -30,7 +34,7 @@ impl FtpClient {
     }
 
     fn parse_list_entry(line: &str) -> Option<FileEntry> {
-        let file = File::from_str(line).ok()?;
+        let file = FtpListFile::from_str(line).ok()?;
         let kind = if file.is_directory() {
             EntryKind::Dir
         } else if file.is_symlink() {
@@ -83,9 +87,16 @@ impl RemoteFs for FtpClient {
         Ok(entries)
     }
 
-    async fn upload(&self, local: &str, remote: &str) -> Result<()> {
-        let data =
-            std::fs::read(local).map_err(|e| anyhow::anyhow!("cannot read local file: {}", e))?;
+    async fn upload_with_progress(
+        &self,
+        local: &str,
+        remote: &str,
+        on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>>,
+    ) -> Result<()> {
+        let mut file = File::open(local)
+            .await
+            .map_err(|e| anyhow::anyhow!("cannot open local file: {}", e))?;
+
         let mut guard = self.conn.lock().await;
         let conn = guard
             .as_mut()
@@ -94,17 +105,47 @@ impl RemoteFs for FtpClient {
             .put_with_stream(remote)
             .await
             .map_err(|e| anyhow::anyhow!("FTP upload stream failed: {}", e))?;
-        stream
-            .write_all(&data)
-            .await
-            .map_err(|e| anyhow::anyhow!("FTP upload write failed: {}", e))?;
+
+        let mut buf = vec![0u8; CHUNK_SIZE];
+        let mut total = 0u64;
+        loop {
+            let n = file
+                .read(&mut buf)
+                .await
+                .map_err(|e| anyhow::anyhow!("FTP upload read failed: {}", e))?;
+            if n == 0 {
+                break;
+            }
+            stream
+                .write_all(&buf[..n])
+                .await
+                .map_err(|e| anyhow::anyhow!("FTP upload write failed: {}", e))?;
+            total += n as u64;
+            if let Some(ref cb) = on_progress {
+                match cb(total) {
+                    ProgressAction::Continue => {}
+                    ProgressAction::Cancel => {
+                        return Err(anyhow::anyhow!("cancelled"));
+                    }
+                    ProgressAction::Pause => {
+                        return Err(anyhow::anyhow!("paused"));
+                    }
+                }
+            }
+        }
+
         conn.finalize_put_stream(stream)
             .await
             .map_err(|e| anyhow::anyhow!("FTP upload finalize failed: {}", e))?;
         Ok(())
     }
 
-    async fn download(&self, remote: &str, local: &str) -> Result<()> {
+    async fn download_with_progress(
+        &self,
+        remote: &str,
+        local: &str,
+        on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>>,
+    ) -> Result<()> {
         let mut guard = self.conn.lock().await;
         let conn = guard
             .as_mut()
@@ -113,16 +154,41 @@ impl RemoteFs for FtpClient {
             .retr_as_stream(remote)
             .await
             .map_err(|e| anyhow::anyhow!("FTP download stream failed: {}", e))?;
-        let mut buf = Vec::new();
-        stream
-            .read_to_end(&mut buf)
+
+        let mut file = File::create(local)
             .await
-            .map_err(|e| anyhow::anyhow!("FTP download read failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("cannot create local file: {}", e))?;
+
+        let mut buf = vec![0u8; CHUNK_SIZE];
+        let mut total = 0u64;
+        loop {
+            let n = stream
+                .read(&mut buf)
+                .await
+                .map_err(|e| anyhow::anyhow!("FTP download read failed: {}", e))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buf[..n])
+                .await
+                .map_err(|e| anyhow::anyhow!("FTP download write failed: {}", e))?;
+            total += n as u64;
+            if let Some(ref cb) = on_progress {
+                match cb(total) {
+                    ProgressAction::Continue => {}
+                    ProgressAction::Cancel => {
+                        return Err(anyhow::anyhow!("cancelled"));
+                    }
+                    ProgressAction::Pause => {
+                        return Err(anyhow::anyhow!("paused"));
+                    }
+                }
+            }
+        }
+
         conn.finalize_retr_stream(stream)
             .await
             .map_err(|e| anyhow::anyhow!("FTP download finalize failed: {}", e))?;
-        std::fs::write(local, &buf)
-            .map_err(|e| anyhow::anyhow!("cannot write local file: {}", e))?;
         Ok(())
     }
 

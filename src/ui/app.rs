@@ -148,6 +148,94 @@ impl FileManagerApp {
                 remote_pane::trigger_list(&mut self.state, idx, &self.registry, self.rt.handle());
             }
         }
+
+        // --- Mkdir result ---
+        let opt = self.state.pending_mkdir_result.take();
+        if let Some(res) = opt.as_ref() {
+            let mut guard = res.lock().unwrap();
+            if let Some(r) = guard.take() {
+                drop(guard);
+                match r {
+                    Ok(()) => {
+                        self.state.status_message = "Folder created".into();
+                        self.state.mkdir_name.clear();
+                        if let Some(idx) = self.active_tab_idx() {
+                            remote_pane::trigger_list(
+                                &mut self.state,
+                                idx,
+                                &self.registry,
+                                self.rt.handle(),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        self.state.status_message = format!("Create folder failed: {}", e);
+                    }
+                }
+            } else {
+                drop(guard);
+                self.state.pending_mkdir_result = opt;
+            }
+        }
+
+        // --- Delete result ---
+        let opt = self.state.pending_delete_result.take();
+        if let Some(res) = opt.as_ref() {
+            let mut guard = res.lock().unwrap();
+            if let Some(r) = guard.take() {
+                drop(guard);
+                match r {
+                    Ok(()) => {
+                        self.state.status_message = "Deleted".into();
+                        self.state.delete_name.clear();
+                        if let Some(idx) = self.active_tab_idx() {
+                            remote_pane::trigger_list(
+                                &mut self.state,
+                                idx,
+                                &self.registry,
+                                self.rt.handle(),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        self.state.status_message = format!("Delete failed: {}", e);
+                    }
+                }
+            } else {
+                drop(guard);
+                self.state.pending_delete_result = opt;
+            }
+        }
+
+        // --- Rename result ---
+        let opt = self.state.pending_rename_result.take();
+        if let Some(res) = opt.as_ref() {
+            let mut guard = res.lock().unwrap();
+            if let Some(r) = guard.take() {
+                drop(guard);
+                match r {
+                    Ok(()) => {
+                        self.state.status_message = "Renamed".into();
+                        self.state.rename_old_name.clear();
+                        self.state.rename_new_name.clear();
+                        if let Some(idx) = self.active_tab_idx() {
+                            remote_pane::trigger_list(
+                                &mut self.state,
+                                idx,
+                                &self.registry,
+                                self.rt.handle(),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        self.state.status_message = format!("Rename failed: {}", e);
+                    }
+                }
+            } else {
+                drop(guard);
+                self.state.pending_rename_result = opt;
+            }
+        }
     }
 
     fn active_tab_idx(&self) -> Option<usize> {
@@ -160,6 +248,102 @@ impl FileManagerApp {
         } else {
             None
         }
+    }
+
+    fn start_mkdir(&mut self, tab_idx: usize, name: String) {
+        let tab = &self.state.tabs[tab_idx];
+        let connection_id = tab.id.clone();
+        let remote_path = tab.remote_path.clone();
+        let registry = self.registry.clone();
+        let path = format!("{}/{}", remote_path.trim_end_matches('/'), name);
+
+        let result = Arc::new(std::sync::Mutex::new(None::<Result<(), String>>));
+        let result_clone = result.clone();
+
+        self.rt.handle().spawn(async move {
+            let fs = match registry.get(&connection_id) {
+                Some(fs) => fs,
+                None => {
+                    *result_clone.lock().unwrap() = Some(Err("connection not found".into()));
+                    return;
+                }
+            };
+            let r = fs.mkdir(&path).await.map_err(|e| e.to_string());
+            *result_clone.lock().unwrap() = Some(r);
+        });
+
+        self.state.pending_mkdir_result = Some(result);
+    }
+
+    fn start_delete(&mut self, tab_idx: usize, name: String) {
+        let tab = &self.state.tabs[tab_idx];
+        let connection_id = tab.id.clone();
+        let registry = self.registry.clone();
+
+        let entry_path = tab
+            .remote_entries
+            .iter()
+            .find(|e| e.name == name)
+            .map(|e| e.path.clone());
+
+        if name == ".." {
+            self.state.status_message = "Cannot delete parent entry".into();
+            return;
+        }
+
+        let Some(path) = entry_path else {
+            self.state.status_message = "Selected entry not found".into();
+            return;
+        };
+
+        let result = Arc::new(std::sync::Mutex::new(None::<Result<(), String>>));
+        let result_clone = result.clone();
+
+        self.rt.handle().spawn(async move {
+            let fs = match registry.get(&connection_id) {
+                Some(fs) => fs,
+                None => {
+                    *result_clone.lock().unwrap() = Some(Err("connection not found".into()));
+                    return;
+                }
+            };
+            let r = fs.delete(&path).await.map_err(|e| e.to_string());
+            *result_clone.lock().unwrap() = Some(r);
+        });
+
+        self.state.pending_delete_result = Some(result);
+    }
+
+    fn start_rename(&mut self, tab_idx: usize, old_name: String, new_name: String) {
+        let tab = &self.state.tabs[tab_idx];
+        let connection_id = tab.id.clone();
+        let registry = self.registry.clone();
+
+        let Some(entry) = tab.remote_entries.iter().find(|e| e.name == old_name) else {
+            self.state.status_message = "Selected entry not found".into();
+            return;
+        };
+
+        let from = entry.path.clone();
+        let parent_dir = remote_pane::remote_parent(&from);
+        let to = format!("{}/{}", parent_dir.trim_end_matches('/'), new_name);
+
+        let result = Arc::new(std::sync::Mutex::new(None::<Result<(), String>>));
+        let result_clone = result.clone();
+
+        self.rt.handle().spawn(async move {
+            let fs = match registry.get(&connection_id) {
+                Some(fs) => fs,
+                None => {
+                    *result_clone.lock().unwrap() = Some(Err("connection not found".into()));
+                    return;
+                }
+            };
+            let r = fs.rename(&from, &to).await.map_err(|e| e.to_string());
+            *result_clone.lock().unwrap() = Some(r);
+        });
+
+        self.state.pending_rename_result = Some(result);
     }
 
     fn apply_visuals(&self, ctx: &egui::Context) {
@@ -361,8 +545,219 @@ impl eframe::App for FileManagerApp {
             connection::render(ctx, &mut self.state, &self.registry, self.rt.handle());
         }
 
+        // ── Remote operation dialogs ─────────────────────────────────────────
+        self.render_remote_op_dialogs(ctx);
+
         // 200ms repaint для обновления прогресса
         ctx.request_repaint_after(std::time::Duration::from_millis(200));
+    }
+}
+
+impl FileManagerApp {
+    fn render_remote_op_dialogs(&mut self, ctx: &egui::Context) {
+        let screen = ctx.screen_rect();
+        let center = screen.center();
+
+        // затемнённый оверлей под диалогами
+        if self.state.show_mkdir_dialog
+            || self.state.show_delete_dialog
+            || self.state.show_rename_dialog
+        {
+            egui::Area::new(egui::Id::new("remote_op_overlay"))
+                .order(egui::Order::Background)
+                .show(ctx, |ui| {
+                    ui.painter().rect_filled(
+                        screen,
+                        0.0,
+                        egui::Color32::from_rgba_premultiplied(0, 0, 0, 120),
+                    );
+                });
+        }
+
+        // --- New Folder ---
+        if self.state.show_mkdir_dialog {
+            let mut open = true;
+            let mut clicked_ok = false;
+            egui::Window::new("new_folder_dialog")
+                .collapsible(false)
+                .title_bar(false)
+                .resizable(false)
+                .default_pos(center)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .frame(
+                    egui::Frame::none()
+                        .fill(BG_PANEL)
+                        .stroke(egui::Stroke::new(1.0, BORDER))
+                        .rounding(8.0)
+                        .inner_margin(egui::Margin::same(16.0)),
+                )
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.set_width(260.0);
+                    ui.label(RichText::new("New Folder").color(TEXT_PRIMARY).strong());
+                    ui.add_space(12.0);
+                    ui.text_edit_singleline(&mut self.state.mkdir_name);
+                    ui.add_space(16.0);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let ok = egui::Button::new(
+                                RichText::new("OK").color(Color32::WHITE).size(12.0),
+                            )
+                            .fill(ACCENT)
+                            .rounding(4.0);
+                            if ui.add(ok).clicked() {
+                                clicked_ok = true;
+                            }
+                            ui.add_space(8.0);
+                            let cancel = egui::Button::new(
+                                RichText::new("Cancel").color(TEXT_DIM).size(12.0),
+                            )
+                            .fill(egui::Color32::TRANSPARENT);
+                            if ui.add(cancel).clicked() {
+                                self.state.show_mkdir_dialog = false;
+                                self.state.mkdir_name.clear();
+                            }
+                        });
+                    });
+                });
+
+            if clicked_ok && !self.state.mkdir_name.is_empty() {
+                if let Some(idx) = self.active_tab_idx() {
+                    let name = self.state.mkdir_name.clone();
+                    self.start_mkdir(idx, name);
+                }
+                self.state.show_mkdir_dialog = false;
+            }
+            if !open {
+                self.state.show_mkdir_dialog = false;
+                self.state.mkdir_name.clear();
+            }
+        }
+
+        // --- Delete ---
+        if self.state.show_delete_dialog {
+            let mut open = true;
+            let mut clicked_ok = false;
+            let name = self.state.delete_name.clone();
+            egui::Window::new("delete_dialog")
+                .collapsible(false)
+                .title_bar(false)
+                .resizable(false)
+                .default_pos(center)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .frame(
+                    egui::Frame::none()
+                        .fill(BG_PANEL)
+                        .stroke(egui::Stroke::new(1.0, BORDER))
+                        .rounding(8.0)
+                        .inner_margin(egui::Margin::same(16.0)),
+                )
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.set_width(260.0);
+                    ui.label(
+                        RichText::new(format!("Delete '{}' ?", name))
+                            .color(TEXT_PRIMARY)
+                            .strong(),
+                    );
+                    ui.add_space(16.0);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let ok = egui::Button::new(
+                                RichText::new("OK").color(Color32::WHITE).size(12.0),
+                            )
+                            .fill(RED)
+                            .rounding(4.0);
+                            if ui.add(ok).clicked() {
+                                clicked_ok = true;
+                            }
+                            ui.add_space(8.0);
+                            let cancel = egui::Button::new(
+                                RichText::new("Cancel").color(TEXT_DIM).size(12.0),
+                            )
+                            .fill(egui::Color32::TRANSPARENT);
+                            if ui.add(cancel).clicked() {
+                                self.state.show_delete_dialog = false;
+                                self.state.delete_name.clear();
+                            }
+                        });
+                    });
+                });
+
+            if clicked_ok {
+                if let Some(idx) = self.active_tab_idx() {
+                    self.start_delete(idx, name);
+                }
+                self.state.show_delete_dialog = false;
+            }
+            if !open {
+                self.state.show_delete_dialog = false;
+                self.state.delete_name.clear();
+            }
+        }
+
+        // --- Rename ---
+        if self.state.show_rename_dialog {
+            let mut open = true;
+            let mut clicked_ok = false;
+            egui::Window::new("rename_dialog")
+                .collapsible(false)
+                .title_bar(false)
+                .resizable(false)
+                .default_pos(center)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .frame(
+                    egui::Frame::none()
+                        .fill(BG_PANEL)
+                        .stroke(egui::Stroke::new(1.0, BORDER))
+                        .rounding(8.0)
+                        .inner_margin(egui::Margin::same(16.0)),
+                )
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.set_width(260.0);
+                    ui.label(RichText::new("Rename").color(TEXT_PRIMARY).strong());
+                    ui.add_space(12.0);
+                    ui.text_edit_singleline(&mut self.state.rename_new_name);
+                    ui.add_space(16.0);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let ok = egui::Button::new(
+                                RichText::new("OK").color(Color32::WHITE).size(12.0),
+                            )
+                            .fill(ACCENT)
+                            .rounding(4.0);
+                            if ui.add(ok).clicked() {
+                                clicked_ok = true;
+                            }
+                            ui.add_space(8.0);
+                            let cancel = egui::Button::new(
+                                RichText::new("Cancel").color(TEXT_DIM).size(12.0),
+                            )
+                            .fill(egui::Color32::TRANSPARENT);
+                            if ui.add(cancel).clicked() {
+                                self.state.show_rename_dialog = false;
+                                self.state.rename_new_name.clear();
+                                self.state.rename_old_name.clear();
+                            }
+                        });
+                    });
+                });
+
+            if clicked_ok && !self.state.rename_new_name.is_empty() {
+                if let Some(idx) = self.active_tab_idx() {
+                    let old_name = self.state.rename_old_name.clone();
+                    let new_name = self.state.rename_new_name.clone();
+                    self.start_rename(idx, old_name, new_name);
+                }
+                self.state.show_rename_dialog = false;
+            }
+            if !open {
+                self.state.show_rename_dialog = false;
+                self.state.rename_new_name.clear();
+                self.state.rename_old_name.clear();
+            }
+        }
     }
 }
 

@@ -1,14 +1,18 @@
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use ssh2::{CheckResult, HashType, KnownHostFileKind, Session};
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-use super::RemoteFs;
+use super::{ProgressAction, RemoteFs};
 use crate::domain::file_entry::{EntryKind, FileEntry};
 
+const CHUNK_SIZE: usize = 64 * 1024;
+
 pub struct SftpClient {
-    session: Session,
+    session: Arc<Mutex<Session>>,
 }
 
 impl SftpClient {
@@ -22,7 +26,9 @@ impl SftpClient {
         session
             .userauth_password(user, password)
             .context("SSH password auth failed")?;
-        Ok(Self { session })
+        Ok(Self {
+            session: Arc::new(Mutex::new(session)),
+        })
     }
 
     /// Подключение по ключу
@@ -35,7 +41,9 @@ impl SftpClient {
         session
             .userauth_pubkey_file(user, None, Path::new(key_path), None)
             .context("SSH key auth failed")?;
-        Ok(Self { session })
+        Ok(Self {
+            session: Arc::new(Mutex::new(session)),
+        })
     }
 }
 
@@ -104,100 +112,197 @@ fn verify_host_key(session: &Session, host: &str, port: u16) -> Result<()> {
 #[async_trait]
 impl RemoteFs for SftpClient {
     async fn list(&self, path: &str) -> Result<Vec<FileEntry>> {
-        // TODO: перенести в spawn_blocking когда будет Arc<Session>
-        let sftp = self.session.sftp().context("SFTP subsystem failed")?;
-        let entries = sftp.readdir(Path::new(path)).context("readdir failed")?;
+        let session = self.session.clone();
+        let path = path.to_string();
+        tokio::task::spawn_blocking(move || {
+            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let entries = sftp.readdir(Path::new(&path)).context("readdir failed")?;
 
-        let result = entries
-            .into_iter()
-            .map(|(pb, stat)| {
-                let kind = if stat.is_dir() {
-                    EntryKind::Dir
-                } else if stat.file_type().is_symlink() {
-                    EntryKind::Symlink
-                } else {
-                    EntryKind::File
-                };
-                FileEntry {
-                    name: pb
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string(),
-                    path: pb.to_string_lossy().to_string(),
-                    kind,
-                    size: stat.size,
-                    modified: stat.mtime.map(|t| t as i64),
-                    permissions: None,
+            let result = entries
+                .into_iter()
+                .map(|(pb, stat)| {
+                    let kind = if stat.is_dir() {
+                        EntryKind::Dir
+                    } else if stat.file_type().is_symlink() {
+                        EntryKind::Symlink
+                    } else {
+                        EntryKind::File
+                    };
+                    FileEntry {
+                        name: pb
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string(),
+                        path: pb.to_string_lossy().to_string(),
+                        kind,
+                        size: stat.size,
+                        modified: stat.mtime.map(|t| t as i64),
+                        permissions: None,
+                    }
+                })
+                .collect();
+
+            Ok(result)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SFTP list task failed: {}", e))?
+    }
+
+    async fn upload_with_progress(
+        &self,
+        local: &str,
+        remote: &str,
+        on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>>,
+    ) -> Result<()> {
+        let session = self.session.clone();
+        let local = local.to_string();
+        let remote = remote.to_string();
+        tokio::task::spawn_blocking(move || {
+            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let mut local_file = std::fs::File::open(&local).context("open local file failed")?;
+            let mut remote_file = sftp
+                .create(Path::new(&remote))
+                .context("create remote file failed")?;
+
+            let mut buf = vec![0u8; CHUNK_SIZE];
+            let mut total = 0u64;
+            loop {
+                let n = local_file.read(&mut buf).context("read local file failed")?;
+                if n == 0 {
+                    break;
                 }
-            })
-            .collect();
-
-        Ok(result)
+                remote_file
+                    .write_all(&buf[..n])
+                    .context("write remote file failed")?;
+                total += n as u64;
+                if let Some(ref cb) = on_progress {
+                    match cb(total) {
+                        ProgressAction::Continue => {}
+                        ProgressAction::Cancel => {
+                            return Err(anyhow::anyhow!("cancelled"));
+                        }
+                        ProgressAction::Pause => {
+                            return Err(anyhow::anyhow!("paused"));
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SFTP upload task failed: {}", e))?
     }
 
-    async fn upload(&self, local: &str, remote: &str) -> Result<()> {
-        // TODO: chunked upload с прогресс-событиями
-        let sftp = self.session.sftp().context("SFTP subsystem failed")?;
-        let mut local_file = std::fs::File::open(local).context("open local file failed")?;
-        let mut remote_file = sftp
-            .create(Path::new(remote))
-            .context("create remote file failed")?;
-        std::io::copy(&mut local_file, &mut remote_file)?;
-        Ok(())
-    }
+    async fn download_with_progress(
+        &self,
+        remote: &str,
+        local: &str,
+        on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>>,
+    ) -> Result<()> {
+        let session = self.session.clone();
+        let remote = remote.to_string();
+        let local = local.to_string();
+        tokio::task::spawn_blocking(move || {
+            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let mut remote_file = sftp.open(Path::new(&remote)).context("open remote file failed")?;
+            let mut local_file =
+                std::fs::File::create(&local).context("create local file failed")?;
 
-    async fn download(&self, remote: &str, local: &str) -> Result<()> {
-        // TODO: chunked download с прогресс-событиями
-        let sftp = self.session.sftp().context("SFTP subsystem failed")?;
-        let mut remote_file = sftp
-            .open(Path::new(remote))
-            .context("open remote file failed")?;
-        let mut local_file = std::fs::File::create(local).context("create local file failed")?;
-        std::io::copy(&mut remote_file, &mut local_file)?;
-        Ok(())
+            let mut buf = vec![0u8; CHUNK_SIZE];
+            let mut total = 0u64;
+            loop {
+                let n = remote_file.read(&mut buf).context("read remote file failed")?;
+                if n == 0 {
+                    break;
+                }
+                local_file
+                    .write_all(&buf[..n])
+                    .context("write local file failed")?;
+                total += n as u64;
+                if let Some(ref cb) = on_progress {
+                    match cb(total) {
+                        ProgressAction::Continue => {}
+                        ProgressAction::Cancel => {
+                            return Err(anyhow::anyhow!("cancelled"));
+                        }
+                        ProgressAction::Pause => {
+                            return Err(anyhow::anyhow!("paused"));
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SFTP download task failed: {}", e))?
     }
 
     async fn mkdir(&self, path: &str) -> Result<()> {
-        let sftp = self.session.sftp().context("SFTP subsystem failed")?;
-        sftp.mkdir(Path::new(path), 0o755).context("mkdir failed")?;
-        Ok(())
+        let session = self.session.clone();
+        let path = path.to_string();
+        tokio::task::spawn_blocking(move || {
+            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            sftp.mkdir(Path::new(&path), 0o755).context("mkdir failed")?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SFTP mkdir task failed: {}", e))?
     }
 
     async fn rename(&self, from: &str, to: &str) -> Result<()> {
-        let sftp = self.session.sftp().context("SFTP subsystem failed")?;
-        sftp.rename(Path::new(from), Path::new(to), None)
-            .context("rename failed")?;
-        Ok(())
+        let session = self.session.clone();
+        let from = from.to_string();
+        let to = to.to_string();
+        tokio::task::spawn_blocking(move || {
+            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            sftp.rename(Path::new(&from), Path::new(&to), None)
+                .context("rename failed")?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SFTP rename task failed: {}", e))?
     }
 
     async fn delete(&self, path: &str) -> Result<()> {
-        let sftp = self.session.sftp().context("SFTP subsystem failed")?;
-        // пробуем как файл, потом как директорию
-        if sftp.unlink(Path::new(path)).is_err() {
-            sftp.rmdir(Path::new(path)).context("delete failed")?;
-        }
-        Ok(())
+        let session = self.session.clone();
+        let path = path.to_string();
+        tokio::task::spawn_blocking(move || {
+            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            // пробуем как файл, потом как директорию
+            if sftp.unlink(Path::new(&path)).is_err() {
+                sftp.rmdir(Path::new(&path)).context("delete failed")?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SFTP delete task failed: {}", e))?
     }
 
     async fn stat(&self, path: &str) -> Result<FileEntry> {
-        let sftp = self.session.sftp().context("SFTP subsystem failed")?;
-        let stat = sftp.stat(Path::new(path)).context("stat failed")?;
-        Ok(FileEntry {
-            name: Path::new(path)
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
+        let session = self.session.clone();
+        let path = path.to_string();
+        tokio::task::spawn_blocking(move || {
+            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let stat = sftp.stat(Path::new(&path)).context("stat failed")?;
+            Ok(FileEntry {
+                name: Path::new(&path)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
                 .to_string(),
-            path: path.to_string(),
-            kind: if stat.is_dir() {
-                EntryKind::Dir
-            } else {
-                EntryKind::File
-            },
-            size: stat.size,
-            modified: stat.mtime.map(|t| t as i64),
-            permissions: None,
+                path: path.to_string(),
+                kind: if stat.is_dir() {
+                    EntryKind::Dir
+                } else {
+                    EntryKind::File
+                },
+                size: stat.size,
+                modified: stat.mtime.map(|t| t as i64),
+                permissions: None,
+            })
         })
+        .await
+        .map_err(|e| anyhow::anyhow!("SFTP stat task failed: {}", e))?
     }
 }

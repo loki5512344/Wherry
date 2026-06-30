@@ -16,6 +16,10 @@ impl TransferQueue {
         self.inner.lock().unwrap().pop_front()
     }
 
+    pub fn get(&self, id: &str) -> Option<TransferTask> {
+        self.inner.lock().unwrap().iter().find(|t| t.id == id).cloned()
+    }
+
     pub fn all(&self) -> Vec<TransferTask> {
         self.inner.lock().unwrap().iter().cloned().collect()
     }

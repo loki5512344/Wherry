@@ -69,13 +69,27 @@ pub fn render(ui: &mut Ui, state: &mut AppState) {
                 state.pending_refresh = true;
             });
             toolbar_btn_enabled(ui, "📁 New Folder", has_conn, || {
-                state.pending_mkdir = true;
+                state.show_mkdir_dialog = true;
+                state.mkdir_name.clear();
             });
             toolbar_btn_enabled(ui, "× Delete", has_conn && has_remote_sel, || {
-                state.pending_delete = true;
+                if let Some(name) = state
+                    .active_tab_ref()
+                    .and_then(|t| t.remote_selected.clone())
+                {
+                    state.show_delete_dialog = true;
+                    state.delete_name = name;
+                }
             });
             toolbar_btn_enabled(ui, "✎ Rename", has_conn && has_remote_sel, || {
-                state.pending_rename = true;
+                if let Some(name) = state
+                    .active_tab_ref()
+                    .and_then(|t| t.remote_selected.clone())
+                {
+                    state.show_rename_dialog = true;
+                    state.rename_old_name = name.clone();
+                    state.rename_new_name = name;
+                }
             });
 
             // Правая часть — History / Bookmarks

@@ -74,9 +74,20 @@ pub struct AppState {
 
     // action flags — выставляются тулбаром, обрабатываются в app.rs
     pub pending_refresh: bool,
-    pub pending_mkdir: bool,
-    pub pending_delete: bool,
-    pub pending_rename: bool,
+
+    // диалоги операций над удалённой ФС
+    pub show_mkdir_dialog: bool,
+    pub show_delete_dialog: bool,
+    pub show_rename_dialog: bool,
+
+    pub mkdir_name: String,
+    pub delete_name: String,
+    pub rename_old_name: String,
+    pub rename_new_name: String,
+
+    pub pending_mkdir_result: Option<PendingResult<()>>,
+    pub pending_delete_result: Option<PendingResult<()>>,
+    pub pending_rename_result: Option<PendingResult<()>>,
 
     pub pending_connect: Option<PendingConnect>,
     pub pending_remote_list: Vec<PendingRemoteList>,
@@ -144,9 +155,16 @@ impl Default for AppState {
             status_message: "Ready".into(),
             connected_count: 0,
             pending_refresh: false,
-            pending_mkdir: false,
-            pending_delete: false,
-            pending_rename: false,
+            show_mkdir_dialog: false,
+            show_delete_dialog: false,
+            show_rename_dialog: false,
+            mkdir_name: String::new(),
+            delete_name: String::new(),
+            rename_old_name: String::new(),
+            rename_new_name: String::new(),
+            pending_mkdir_result: None,
+            pending_delete_result: None,
+            pending_rename_result: None,
             pending_connect: None,
             pending_remote_list: Vec::new(),
         }
