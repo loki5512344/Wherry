@@ -94,8 +94,8 @@ pub fn spawn_worker(
             let task_id_for_progress = task.id.clone();
             let throttle = Arc::new(std::sync::Mutex::new(ProgressThrottle::default()));
             let last_sample = Arc::new(std::sync::Mutex::new((Instant::now(), 0u64)));
-            let on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>> = Some(Box::new(
-                move |transferred: u64| {
+            let on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>> =
+                Some(Box::new(move |transferred: u64| {
                     // Check for user-initiated cancel/pause first.
                     if let Some(t) = queue_for_progress.get(&task_id_for_progress) {
                         match t.state {
@@ -119,18 +119,23 @@ pub fn spawn_worker(
                         speed
                     };
                     if throttle.lock().unwrap().should_emit() {
-                        queue_for_progress.update_progress(&task_id_for_progress, transferred, speed);
+                        queue_for_progress.update_progress(
+                            &task_id_for_progress,
+                            transferred,
+                            speed,
+                        );
                     }
                     ProgressAction::Continue
-                },
-            ));
+                }));
 
             let result = match task.kind {
                 TransferKind::Upload => {
-                    fs.upload_with_progress(&task.local_path, &task.remote_path, on_progress).await
+                    fs.upload_with_progress(&task.local_path, &task.remote_path, on_progress)
+                        .await
                 }
                 TransferKind::Download => {
-                    fs.download_with_progress(&task.remote_path, &task.local_path, on_progress).await
+                    fs.download_with_progress(&task.remote_path, &task.local_path, on_progress)
+                        .await
                 }
             };
 

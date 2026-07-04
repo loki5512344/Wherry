@@ -20,7 +20,7 @@ pub fn render(
 
     // Центрируем окно
     let screen = ctx.screen_rect();
-    let win_size = egui::vec2(420.0, 340.0);
+    let win_size = egui::vec2(380.0, 340.0);
     let win_pos = egui::pos2(
         (screen.width() - win_size.x) * 0.5,
         (screen.height() - win_size.y) * 0.4,
@@ -43,9 +43,9 @@ pub fn render(
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             egui::Frame::none()
-                .fill(Color32::from_rgb(30, 30, 34))
+                .fill(BG_PANEL)
                 .stroke(egui::Stroke::new(1.0, BORDER))
-                .rounding(10.0)
+                .rounding(RADIUS_LG)
                 .shadow(egui::Shadow {
                     offset: egui::vec2(0.0, 8.0),
                     blur: 24.0,
@@ -80,15 +80,11 @@ pub fn render(
                     ui.horizontal(|ui| {
                         for (i, p) in protocols.iter().enumerate() {
                             let active = state.connect_protocol == i;
-                            let bg = if active {
-                                ACCENT
-                            } else {
-                                Color32::from_rgb(40, 40, 44)
-                            };
-                            let tc = if active { Color32::WHITE } else { TEXT_DIM };
-                            let btn = egui::Button::new(RichText::new(*p).color(tc).size(12.0))
+                            let bg = if active { ACCENT_DIM } else { BG_CONTENT };
+                            let tc = if active { TEXT_PRIMARY } else { TEXT_DIM };
+                            let btn = egui::Button::new(RichText::new(*p).color(tc).size(11.5))
                                 .fill(bg)
-                                .rounding(4.0)
+                                .rounding(RADIUS_MD)
                                 .min_size(egui::vec2(64.0, 28.0));
                             if ui.add(btn).clicked() {
                                 state.connect_protocol = i;
@@ -99,27 +95,20 @@ pub fn render(
 
                     ui.add_space(14.0);
 
-                    // Поля ввода
+                    // Поля ввода — Host / Username+Port / Password, как в макете
                     let field_w = ui.available_width();
-                    field(
-                        ui,
-                        "Label (optional)",
-                        &mut state.connect_label,
-                        field_w,
-                        false,
-                    );
+
+                    field(ui, "Host", &mut state.connect_host, field_w, false);
                     ui.add_space(8.0);
 
                     ui.horizontal(|ui| {
-                        let host_w = field_w - 80.0 - 8.0;
-                        field(ui, "Host", &mut state.connect_host, host_w, false);
+                        let user_w = field_w - 80.0 - 8.0;
+                        field(ui, "Username", &mut state.connect_user, user_w, false);
                         ui.add_space(8.0);
                         field(ui, "Port", &mut state.connect_port, 80.0, false);
                     });
                     ui.add_space(8.0);
 
-                    field(ui, "Username", &mut state.connect_user, field_w, false);
-                    ui.add_space(8.0);
                     field(ui, "Password", &mut state.connect_pass, field_w, true);
 
                     if state.connect_protocol == 0 {
@@ -127,7 +116,7 @@ pub fn render(
                         ui.horizontal(|ui| {
                             field(
                                 ui,
-                                "Key path",
+                                "Key path (optional)",
                                 &mut state.connect_key_path,
                                 field_w - 80.0 - 8.0,
                                 false,
@@ -137,22 +126,43 @@ pub fn render(
                             let browse = egui::Button::new(
                                 RichText::new("Browse").color(TEXT_DIM).size(11.0),
                             )
-                            .fill(Color32::from_rgb(40, 40, 44))
+                            .fill(BG_CONTENT)
                             .min_size(egui::vec2(72.0, 32.0))
-                            .rounding(4.0);
+                            .rounding(RADIUS_MD);
                             ui.add_enabled(false, browse);
                         });
                     }
+
+                    ui.add_space(8.0);
+                    field(
+                        ui,
+                        "Label (optional)",
+                        &mut state.connect_label,
+                        field_w,
+                        false,
+                    );
 
                     // Ошибка
                     if !state.connect_error.is_empty() {
                         ui.add_space(10.0);
                         egui::Frame::none()
-                            .fill(Color32::from_rgb(60, 25, 25))
-                            .rounding(4.0)
-                            .inner_margin(egui::Margin::symmetric(8.0, 6.0))
+                            .fill(Color32::from_rgb(42, 27, 22))
+                            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(70, 40, 34)))
+                            .rounding(RADIUS_MD)
+                            .inner_margin(egui::Margin::symmetric(10.0, 8.0))
                             .show(ui, |ui| {
-                                ui.label(RichText::new(&state.connect_error).color(RED).size(11.0));
+                                ui.horizontal(|ui| {
+                                    crate::ui::icons::icon(
+                                        ui,
+                                        crate::ui::icons::Icon::DangerTriangle,
+                                        14.0,
+                                        RED,
+                                    );
+                                    ui.add_space(6.0);
+                                    ui.label(
+                                        RichText::new(&state.connect_error).color(RED).size(11.0),
+                                    );
+                                });
                             });
                     }
 
@@ -161,10 +171,10 @@ pub fn render(
                     // Кнопки
                     ui.horizontal(|ui| {
                         let cancel =
-                            egui::Button::new(RichText::new("Cancel").color(TEXT_DIM).size(12.0))
-                                .fill(Color32::from_rgb(40, 40, 44))
-                                .rounding(6.0)
-                                .min_size(egui::vec2(90.0, 34.0));
+                            egui::Button::new(RichText::new("Cancel").color(TEXT_DIM).size(12.5))
+                                .fill(Color32::TRANSPARENT)
+                                .rounding(RADIUS_MD)
+                                .min_size(egui::vec2(90.0, 30.0));
                         if ui.add(cancel).clicked() && !state.connect_loading {
                             state.show_connect_dialog = false;
                         }
@@ -178,13 +188,13 @@ pub fn render(
                                 };
                                 let connect_btn = egui::Button::new(
                                     RichText::new(connect_label)
-                                        .color(Color32::WHITE)
-                                        .size(12.0)
+                                        .color(ON_ACCENT)
+                                        .size(12.5)
                                         .strong(),
                                 )
                                 .fill(ACCENT)
-                                .rounding(6.0)
-                                .min_size(egui::vec2(110.0, 34.0));
+                                .rounding(RADIUS_MD)
+                                .min_size(egui::vec2(110.0, 30.0));
 
                                 if ui.add(connect_btn).clicked() {
                                     do_connect(state, registry, rt_handle);
@@ -217,6 +227,19 @@ fn do_connect(
     rt_handle: &tokio::runtime::Handle,
 ) {
     state.connect_error.clear();
+
+    if state.connect_host.trim().is_empty() {
+        state.connect_error = "Host is required.".into();
+        return;
+    }
+    if state.connect_user.trim().is_empty() {
+        state.connect_error = "Username is required.".into();
+        return;
+    }
+    if !state.connect_port.trim().is_empty() && state.connect_port.trim().parse::<u16>().is_err() {
+        state.connect_error = "Port must be a number between 1 and 65535.".into();
+        return;
+    }
 
     let protocol = match state.connect_protocol {
         0 => Protocol::Sftp,
@@ -261,6 +284,17 @@ fn do_connect(
         },
     };
 
+    spawn_connect(state, registry, rt_handle, params);
+}
+
+/// Общий код запуска подключения — используется и диалогом New Connection,
+/// и переподключением из истории (см. `reconnect_from_history`).
+pub fn spawn_connect(
+    state: &mut AppState,
+    registry: &Arc<RemoteRegistry>,
+    rt_handle: &tokio::runtime::Handle,
+    params: ConnectionParams,
+) {
     let registry = registry.clone();
     let params_clone = params.clone();
     let result = Arc::new(std::sync::Mutex::new(None));
@@ -273,6 +307,80 @@ fn do_connect(
     });
 
     state.pending_connect = Some(PendingConnect { result });
+}
+
+/// Переподключение по клику на запись истории — пароль (если есть) уже лежит
+/// в keychain под `entry.conn_id`, поэтому диалог не нужен.
+pub fn reconnect_from_history(
+    state: &mut AppState,
+    registry: &Arc<RemoteRegistry>,
+    rt_handle: &tokio::runtime::Handle,
+    entry: &crate::ui::state::HistoryEntry,
+) {
+    state.connect_error.clear();
+    let params = ConnectionParams {
+        id: entry.conn_id.clone(),
+        label: format!("{}@{}", entry.user, entry.host),
+        protocol: entry.protocol.clone(),
+        host: entry.host.clone(),
+        port: entry.port,
+        username: entry.user.clone(),
+        password: None,
+        key_path: entry.key_path.clone(),
+    };
+    spawn_connect(state, registry, rt_handle, params);
+}
+
+fn protocol_index(protocol: &Protocol) -> usize {
+    match protocol {
+        Protocol::Sftp => 0,
+        Protocol::Ftp => 1,
+        Protocol::Ftps => 2,
+    }
+}
+
+/// "Изменить" в меню истории — открывает диалог New Connection, предзаполненный
+/// этой записью (включая пароль из keychain, если он там есть).
+pub fn edit_history_entry(state: &mut AppState, entry: &crate::ui::state::HistoryEntry) {
+    state.connect_error.clear();
+    state.connect_host = entry.host.clone();
+    state.connect_user = entry.user.clone();
+    state.connect_port = entry.port.to_string();
+    state.connect_protocol = protocol_index(&entry.protocol);
+    state.connect_key_path = entry.key_path.clone().unwrap_or_default();
+    state.connect_pass = keychain::get_password(&entry.conn_id).unwrap_or_default();
+    state.connect_label.clear();
+    state.show_connect_dialog = true;
+}
+
+/// "Сохранить" в меню истории — превращает разовое подключение в постоянный Site.
+pub fn save_history_as_site(
+    db: &Arc<std::sync::Mutex<rusqlite::Connection>>,
+    sites: &mut Vec<crate::domain::site::Site>,
+    entry: &crate::ui::state::HistoryEntry,
+) -> Result<(), String> {
+    let site = crate::domain::site::Site {
+        id: entry.conn_id.clone(),
+        name: format!("{}@{}", entry.user, entry.host),
+        protocol: entry.protocol.clone(),
+        host: entry.host.clone(),
+        port: entry.port,
+        username: entry.user.clone(),
+        key_path: entry.key_path.clone(),
+        folder: None,
+        note: None,
+    };
+    let conn = db
+        .lock()
+        .map_err(|_| "database lock poisoned".to_string())?;
+    crate::storage::db::save_site(&conn, &site).map_err(|e| e.to_string())?;
+    drop(conn);
+    if let Some(existing) = sites.iter_mut().find(|s| s.id == site.id) {
+        *existing = site;
+    } else {
+        sites.push(site);
+    }
+    Ok(())
 }
 
 async fn connect_async(

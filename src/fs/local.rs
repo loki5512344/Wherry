@@ -58,3 +58,46 @@ pub fn home_dir() -> String {
         .to_string_lossy()
         .to_string()
 }
+
+pub fn rename(from: &str, to: &str) -> Result<()> {
+    fs::rename(from, to)?;
+    Ok(())
+}
+
+pub fn delete(path: &str) -> Result<()> {
+    let meta = fs::symlink_metadata(path)?;
+    if meta.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+pub fn mkdir(path: &str) -> Result<()> {
+    fs::create_dir(path)?;
+    Ok(())
+}
+
+/// Открывает файл/папку в системном приложении по умолчанию.
+pub fn open(path: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(path).spawn()?;
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open").arg(path).spawn()?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", path])
+        .spawn()?;
+    Ok(())
+}
+
+/// Перемещает файл/папку в целевую директорию (для drag & drop).
+pub fn move_into(src_path: &str, dest_dir: &str) -> Result<()> {
+    let name = std::path::Path::new(src_path)
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("invalid source path"))?;
+    let dest = std::path::Path::new(dest_dir).join(name);
+    fs::rename(src_path, dest)?;
+    Ok(())
+}

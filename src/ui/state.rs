@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionParams, ConnectionStatus};
+use crate::domain::connection::{ConnectionParams, ConnectionStatus, Protocol};
 use crate::domain::file_entry::FileEntry;
 use crate::domain::transfer::TransferTask;
 
@@ -16,6 +16,14 @@ pub struct ConnectionTab {
     pub loading: bool,
 }
 
+/// Какая панель последней принимала клик — используется тулбаром,
+/// чтобы New Folder/Rename/Delete применялись к нужной стороне (local/remote).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Pane {
+    Local,
+    Remote,
+}
+
 type PendingResult<T> = Arc<std::sync::Mutex<Option<Result<T, String>>>>;
 
 pub struct PendingConnect {
@@ -29,6 +37,14 @@ pub struct PendingRemoteList {
 
 #[derive(Clone)]
 pub struct Bookmark {
+    pub id: i64,
+    pub name: String,
+    pub path: String,
+}
+
+/// Фиксированный пункт быстрого доступа (Home/Desktop/...) — не удаляется, не хранится в БД.
+#[derive(Clone)]
+pub struct QuickAccess {
     pub name: String,
     pub path: String,
 }
@@ -39,6 +55,10 @@ pub struct HistoryEntry {
     pub port: u16,
     pub user: String,
     pub time: String,
+    /// Стабильный id этой цели — под ним же лежит пароль в keychain.
+    pub conn_id: String,
+    pub protocol: Protocol,
+    pub key_path: Option<String>,
 }
 
 pub struct AppState {
@@ -49,10 +69,20 @@ pub struct AppState {
     pub local_entries: Vec<FileEntry>,
     pub local_selected: Option<String>,
 
+    /// Панель, в которой был последний клик — New Folder/Rename/Delete в тулбаре
+    /// применяются к ней.
+    pub active_pane: Pane,
+    /// К какой стороне относится открытый сейчас диалог mkdir/rename/delete.
+    pub op_target: Pane,
+
     pub show_connect_dialog: bool,
     pub show_bookmarks: bool,
     pub show_history: bool,
+    pub show_settings_dialog: bool,
 
+    /// Фиксированные пункты быстрого доступа (Home/Desktop/...) — не удаляются, не хранятся в БД.
+    pub quick_access: Vec<QuickAccess>,
+    /// Закладки, добавленные пользователем — хранятся в БД, можно удалять.
     pub bookmarks: Vec<Bookmark>,
     pub history: Vec<HistoryEntry>,
 
@@ -74,6 +104,10 @@ pub struct AppState {
 
     // action flags — выставляются тулбаром, обрабатываются в app.rs
     pub pending_refresh: bool,
+    /// Клик по записи истории — переподключиться (новая вкладка, без диалога).
+    pub pending_history_reconnect: Option<HistoryEntry>,
+    /// ПКМ → "Save" на записи истории — сохранить как постоянный Site.
+    pub pending_history_save: Option<HistoryEntry>,
 
     // диалоги операций над удалённой ФС
     pub show_mkdir_dialog: bool,
@@ -105,41 +139,45 @@ impl Default for AppState {
             local_path: home.clone(),
             local_entries: Vec::new(),
             local_selected: None,
+            active_pane: Pane::Local,
+            op_target: Pane::Local,
             show_connect_dialog: false,
             show_bookmarks: false,
             show_history: false,
-            bookmarks: vec![
-                Bookmark {
+            show_settings_dialog: false,
+            quick_access: vec![
+                QuickAccess {
                     name: "Home".into(),
                     path: home.clone(),
                 },
-                Bookmark {
+                QuickAccess {
                     name: "Desktop".into(),
                     path: format!("{}/Desktop", home),
                 },
-                Bookmark {
+                QuickAccess {
                     name: "Documents".into(),
                     path: format!("{}/Documents", home),
                 },
-                Bookmark {
+                QuickAccess {
                     name: "Downloads".into(),
                     path: dirs::download_dir()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|| format!("{}/Downloads", home)),
                 },
-                Bookmark {
+                QuickAccess {
                     name: "Pictures".into(),
                     path: format!("{}/Pictures", home),
                 },
-                Bookmark {
+                QuickAccess {
                     name: "Music".into(),
                     path: format!("{}/Music", home),
                 },
-                Bookmark {
+                QuickAccess {
                     name: "Videos".into(),
                     path: format!("{}/Videos", home),
                 },
             ],
+            bookmarks: Vec::new(),
             history: Vec::new(),
             connect_label: String::new(),
             connect_host: String::new(),
@@ -155,6 +193,8 @@ impl Default for AppState {
             status_message: "Ready".into(),
             connected_count: 0,
             pending_refresh: false,
+            pending_history_reconnect: None,
+            pending_history_save: None,
             show_mkdir_dialog: false,
             show_delete_dialog: false,
             show_rename_dialog: false,
@@ -188,20 +228,25 @@ impl AppState {
         Some(&self.tabs[idx])
     }
 
-    pub fn add_history(&mut self, host: &str, port: u16, user: &str) {
-        use chrono::Local;
-        let now = Local::now().format("%H:%M %d.%m").to_string();
-        self.history.insert(
-            0,
-            HistoryEntry {
-                host: host.into(),
-                port,
-                user: user.into(),
-                time: now,
-            },
-        );
-        if self.history.len() > 20 {
-            self.history.truncate(20);
+    /// Перечитывает историю подключений из БД (после записи новой попытки).
+    pub fn reload_history(&mut self, db: &Arc<std::sync::Mutex<rusqlite::Connection>>) {
+        if let Ok(conn) = db.lock()
+            && let Ok(rows) = crate::storage::db::get_history(&conn)
+        {
+            self.history = rows
+                .into_iter()
+                .map(
+                    |(host, port, user, time, conn_id, protocol, key_path)| HistoryEntry {
+                        host,
+                        port,
+                        user,
+                        time,
+                        conn_id,
+                        protocol,
+                        key_path,
+                    },
+                )
+                .collect();
         }
     }
 }

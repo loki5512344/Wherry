@@ -39,14 +39,37 @@ pub fn run() {
 
     let app = FileManagerApp::new(registry, queue, rt, db, sites);
 
+    let icon = load_app_icon();
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("LoFlum")
             .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([900.0, 600.0]),
+            .with_min_inner_size([900.0, 600.0])
+            .with_icon(icon),
         ..Default::default()
     };
 
-    eframe::run_native("LoFlum", native_options, Box::new(|_cc| Ok(Box::new(app))))
-        .expect("failed to start LoFlum");
+    eframe::run_native(
+        "LoFlum",
+        native_options,
+        Box::new(|_cc| {
+            crate::ui::menu::setup_native_menu();
+            Ok(Box::new(app))
+        }),
+    )
+    .expect("failed to start LoFlum");
+}
+
+fn load_app_icon() -> egui::IconData {
+    let bytes = include_bytes!("ui/icons/app_icon.png");
+    let image = image::load_from_memory(bytes)
+        .expect("failed to decode app icon")
+        .into_rgba8();
+    let (width, height) = image.dimensions();
+    egui::IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    }
 }

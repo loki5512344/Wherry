@@ -115,7 +115,11 @@ impl RemoteFs for SftpClient {
         let session = self.session.clone();
         let path = path.to_string();
         tokio::task::spawn_blocking(move || {
-            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let sftp = session
+                .lock()
+                .unwrap()
+                .sftp()
+                .context("SFTP subsystem failed")?;
             let entries = sftp.readdir(Path::new(&path)).context("readdir failed")?;
 
             let result = entries
@@ -159,7 +163,11 @@ impl RemoteFs for SftpClient {
         let local = local.to_string();
         let remote = remote.to_string();
         tokio::task::spawn_blocking(move || {
-            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let sftp = session
+                .lock()
+                .unwrap()
+                .sftp()
+                .context("SFTP subsystem failed")?;
             let mut local_file = std::fs::File::open(&local).context("open local file failed")?;
             let mut remote_file = sftp
                 .create(Path::new(&remote))
@@ -168,7 +176,9 @@ impl RemoteFs for SftpClient {
             let mut buf = vec![0u8; CHUNK_SIZE];
             let mut total = 0u64;
             loop {
-                let n = local_file.read(&mut buf).context("read local file failed")?;
+                let n = local_file
+                    .read(&mut buf)
+                    .context("read local file failed")?;
                 if n == 0 {
                     break;
                 }
@@ -204,15 +214,23 @@ impl RemoteFs for SftpClient {
         let remote = remote.to_string();
         let local = local.to_string();
         tokio::task::spawn_blocking(move || {
-            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
-            let mut remote_file = sftp.open(Path::new(&remote)).context("open remote file failed")?;
+            let sftp = session
+                .lock()
+                .unwrap()
+                .sftp()
+                .context("SFTP subsystem failed")?;
+            let mut remote_file = sftp
+                .open(Path::new(&remote))
+                .context("open remote file failed")?;
             let mut local_file =
                 std::fs::File::create(&local).context("create local file failed")?;
 
             let mut buf = vec![0u8; CHUNK_SIZE];
             let mut total = 0u64;
             loop {
-                let n = remote_file.read(&mut buf).context("read remote file failed")?;
+                let n = remote_file
+                    .read(&mut buf)
+                    .context("read remote file failed")?;
                 if n == 0 {
                     break;
                 }
@@ -242,8 +260,13 @@ impl RemoteFs for SftpClient {
         let session = self.session.clone();
         let path = path.to_string();
         tokio::task::spawn_blocking(move || {
-            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
-            sftp.mkdir(Path::new(&path), 0o755).context("mkdir failed")?;
+            let sftp = session
+                .lock()
+                .unwrap()
+                .sftp()
+                .context("SFTP subsystem failed")?;
+            sftp.mkdir(Path::new(&path), 0o755)
+                .context("mkdir failed")?;
             Ok(())
         })
         .await
@@ -255,7 +278,11 @@ impl RemoteFs for SftpClient {
         let from = from.to_string();
         let to = to.to_string();
         tokio::task::spawn_blocking(move || {
-            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let sftp = session
+                .lock()
+                .unwrap()
+                .sftp()
+                .context("SFTP subsystem failed")?;
             sftp.rename(Path::new(&from), Path::new(&to), None)
                 .context("rename failed")?;
             Ok(())
@@ -268,7 +295,11 @@ impl RemoteFs for SftpClient {
         let session = self.session.clone();
         let path = path.to_string();
         tokio::task::spawn_blocking(move || {
-            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let sftp = session
+                .lock()
+                .unwrap()
+                .sftp()
+                .context("SFTP subsystem failed")?;
             // пробуем как файл, потом как директорию
             if sftp.unlink(Path::new(&path)).is_err() {
                 sftp.rmdir(Path::new(&path)).context("delete failed")?;
@@ -283,14 +314,18 @@ impl RemoteFs for SftpClient {
         let session = self.session.clone();
         let path = path.to_string();
         tokio::task::spawn_blocking(move || {
-            let sftp = session.lock().unwrap().sftp().context("SFTP subsystem failed")?;
+            let sftp = session
+                .lock()
+                .unwrap()
+                .sftp()
+                .context("SFTP subsystem failed")?;
             let stat = sftp.stat(Path::new(&path)).context("stat failed")?;
             Ok(FileEntry {
                 name: Path::new(&path)
                     .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
-                .to_string(),
+                    .to_string(),
                 path: path.to_string(),
                 kind: if stat.is_dir() {
                     EntryKind::Dir

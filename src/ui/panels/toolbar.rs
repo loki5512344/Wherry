@@ -1,105 +1,166 @@
-use crate::ui::state::AppState;
+use crate::domain::transfer::{TransferKind, TransferTask};
+use crate::transfer::queue::TransferQueue;
+use crate::ui::icons::{self, Icon};
+use crate::ui::state::{AppState, Pane};
 use crate::ui::theme::*;
 use egui::{Align, Layout, RichText, Ui};
 
-pub fn render(ui: &mut Ui, state: &mut AppState) {
+pub fn render(ui: &mut Ui, state: &mut AppState, queue: &TransferQueue) {
     let frame = egui::Frame::none()
         .fill(BG_TOOLBAR)
         .inner_margin(egui::Margin::symmetric(8.0, 0.0));
 
     frame.show(ui, |ui| {
-        ui.set_min_height(TOOLBAR_H);
-        ui.horizontal_centered(|ui| {
-            // Логотип
-            ui.label(
-                RichText::new("LoFlum")
-                    .color(TEXT_PRIMARY)
-                    .size(14.0)
-                    .strong(),
-            );
+        let width = ui.available_width();
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, TOOLBAR_H),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                // Логотип
+                icons::icon(ui, Icon::Folder, 17.0, ACCENT);
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("LoFlum")
+                        .color(TEXT_PRIMARY)
+                        .size(14.0)
+                        .strong(),
+                );
 
-            ui.add_space(8.0);
-            separator_v(ui);
-            ui.add_space(8.0);
+                ui.add_space(8.0);
+                separator_v(ui);
+                ui.add_space(8.0);
 
-            // Новое подключение
-            toolbar_btn(ui, "+ New Connection", false, || {
-                state.show_connect_dialog = true;
-            });
-
-            separator_v(ui);
-
-            // Кнопки работы с файлами
-            let has_conn = state
-                .active_tab_ref()
-                .map(|t| t.status == crate::domain::connection::ConnectionStatus::Connected)
-                .unwrap_or(false);
-
-            let has_local_sel = state.local_selected.is_some();
-            let has_remote_sel = state
-                .active_tab_ref()
-                .and_then(|t| t.remote_selected.as_ref())
-                .is_some();
-
-            toolbar_btn_enabled(ui, "⬆ Upload", has_conn && has_local_sel, || {
-                state.status_message = "Upload: select file and use drag & drop".into();
-            });
-            toolbar_btn_enabled(ui, "⬇ Download", has_conn && has_remote_sel, || {
-                state.status_message = "Download: select file and use drag & drop".into();
-            });
-
-            separator_v(ui);
-
-            // Очередь — с счётчиком
-            let q_count = state.queue_tasks.len();
-            let q_label = if q_count > 0 {
-                format!("⏳ Queue  {}", q_count)
-            } else {
-                "⏳ Queue".to_string()
-            };
-            let q_active = state.show_queue;
-            toolbar_btn(ui, &q_label, q_active, || {
-                state.show_queue = !state.show_queue;
-            });
-
-            separator_v(ui);
-
-            toolbar_btn_enabled(ui, "⟳ Refresh", has_conn, || {
-                // refresh remote — вызывается снаружи через state флаг
-                state.pending_refresh = true;
-            });
-            toolbar_btn_enabled(ui, "📁 New Folder", has_conn, || {
-                state.show_mkdir_dialog = true;
-                state.mkdir_name.clear();
-            });
-            toolbar_btn_enabled(ui, "× Delete", has_conn && has_remote_sel, || {
-                if let Some(name) = state
-                    .active_tab_ref()
-                    .and_then(|t| t.remote_selected.clone())
-                {
-                    state.show_delete_dialog = true;
-                    state.delete_name = name;
+                // Новое подключение — единственная акцентная кнопка в тулбаре
+                let connect_btn = egui::Button::image_and_text(
+                    icons::image(Icon::AddCircleLinear, 15.0, TEXT_PRIMARY),
+                    RichText::new("New Connection")
+                        .color(TEXT_PRIMARY)
+                        .size(12.5),
+                )
+                .fill(ACCENT_DIM)
+                .rounding(RADIUS_MD)
+                .min_size(egui::vec2(0.0, 30.0));
+                if ui.add(connect_btn).clicked() {
+                    state.show_connect_dialog = true;
                 }
-            });
-            toolbar_btn_enabled(ui, "✎ Rename", has_conn && has_remote_sel, || {
-                if let Some(name) = state
-                    .active_tab_ref()
-                    .and_then(|t| t.remote_selected.clone())
-                {
-                    state.show_rename_dialog = true;
-                    state.rename_old_name = name.clone();
-                    state.rename_new_name = name;
-                }
-            });
 
-            // Правая часть — History / Bookmarks
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                toolbar_btn(ui, "⏱ History", state.show_history, || {
-                    state.show_history = !state.show_history;
-                    state.show_bookmarks = false;
+                separator_v(ui);
+
+                // Кнопки работы с файлами
+                let has_conn = state
+                    .active_tab_ref()
+                    .map(|t| t.status == crate::domain::connection::ConnectionStatus::Connected)
+                    .unwrap_or(false);
+
+                let has_local_sel = state.local_selected.is_some();
+                let has_remote_sel = state
+                    .active_tab_ref()
+                    .and_then(|t| t.remote_selected.as_ref())
+                    .is_some();
+
+                toolbar_btn_enabled(
+                    ui,
+                    Icon::Upload,
+                    "Upload",
+                    has_conn && has_local_sel,
+                    || {
+                        queue_selected_upload(state, queue);
+                    },
+                );
+                toolbar_btn_enabled(
+                    ui,
+                    Icon::Download,
+                    "Download",
+                    has_conn && has_remote_sel,
+                    || {
+                        queue_selected_download(state, queue);
+                    },
+                );
+
+                separator_v(ui);
+
+                // Очередь — с счётчиком
+                let q_count = state.queue_tasks.len();
+                let q_label = if q_count > 0 {
+                    format!("Queue  {}", q_count)
+                } else {
+                    "Queue".to_string()
+                };
+                let q_active = state.show_queue;
+                toolbar_btn(ui, Icon::Clock, &q_label, q_active, || {
+                    state.show_queue = !state.show_queue;
                 });
-            });
-        });
+
+                separator_v(ui);
+
+                let on_remote = state.active_pane == Pane::Remote;
+                let can_new_folder = if on_remote { has_conn } else { true };
+                let can_delete_rename = if on_remote {
+                    has_conn && has_remote_sel
+                } else {
+                    has_local_sel
+                };
+
+                toolbar_icon_btn(ui, Icon::Refresh, has_conn, "Refresh", || {
+                    // refresh remote — вызывается снаружи через state флаг
+                    state.pending_refresh = true;
+                });
+                toolbar_icon_btn(
+                    ui,
+                    Icon::FolderWithFiles,
+                    can_new_folder,
+                    "New Folder",
+                    || {
+                        state.op_target = state.active_pane;
+                        state.show_mkdir_dialog = true;
+                        state.mkdir_name.clear();
+                    },
+                );
+                toolbar_icon_btn(ui, Icon::Trash, can_delete_rename, "Delete", || {
+                    let name = if on_remote {
+                        state
+                            .active_tab_ref()
+                            .and_then(|t| t.remote_selected.clone())
+                    } else {
+                        state.local_selected.clone()
+                    };
+                    if let Some(name) = name {
+                        state.op_target = state.active_pane;
+                        state.show_delete_dialog = true;
+                        state.delete_name = name;
+                    }
+                });
+                toolbar_icon_btn(ui, Icon::Pen, can_delete_rename, "Rename", || {
+                    let name = if on_remote {
+                        state
+                            .active_tab_ref()
+                            .and_then(|t| t.remote_selected.clone())
+                    } else {
+                        state.local_selected.clone()
+                    };
+                    if let Some(name) = name {
+                        state.op_target = state.active_pane;
+                        state.show_rename_dialog = true;
+                        state.rename_old_name = name.clone();
+                        state.rename_new_name = name;
+                    }
+                });
+
+                // Правая часть — History / Bookmarks / Settings
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    // На macOS кнопка настроек живёт в нативном верхнем меню
+                    // (LoFlum → Settings…), здесь она не нужна.
+                    #[cfg(not(target_os = "macos"))]
+                    toolbar_icon_btn(ui, Icon::Settings, true, "Settings", || {
+                        state.show_settings_dialog = true;
+                    });
+                    toolbar_btn(ui, Icon::History, "History", state.show_history, || {
+                        state.show_history = !state.show_history;
+                        state.show_bookmarks = false;
+                    });
+                });
+            },
+        );
     });
 
     // История поверх
@@ -120,17 +181,22 @@ fn render_history_popup(ui: &mut Ui, state: &mut AppState) {
         .order(egui::Order::Foreground)
         .show(ui.ctx(), |ui| {
             egui::Frame::none()
-                .fill(egui::Color32::from_rgb(32, 32, 36))
+                .fill(BG_PANEL)
                 .stroke(egui::Stroke::new(1.0, BORDER))
-                .rounding(6.0)
-                .inner_margin(egui::Margin::same(8.0))
+                .rounding(RADIUS_LG)
+                .inner_margin(egui::Margin::same(10.0))
                 .show(ui, |ui| {
                     ui.set_width(260.0);
-                    ui.label(
-                        RichText::new("Recent Connections")
-                            .color(TEXT_DIM)
-                            .size(11.0),
-                    );
+                    ui.horizontal(|ui| {
+                        icons::icon(ui, Icon::ServerSquare, 12.0, TEXT_DIM);
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new("Recent connections")
+                                .color(TEXT_DIM)
+                                .size(11.0)
+                                .strong(),
+                        );
+                    });
                     ui.add_space(4.0);
                     if state.history.is_empty() {
                         ui.label(RichText::new("No history yet").color(TEXT_HINT));
@@ -143,24 +209,30 @@ fn render_history_popup(ui: &mut Ui, state: &mut AppState) {
                                         format!("{}@{}:{}", entry.user, entry.host, entry.port);
                                     let time =
                                         RichText::new(&entry.time).color(TEXT_HINT).size(10.0);
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                RichText::new(&label)
-                                                    .color(TEXT_PRIMARY)
-                                                    .size(12.0),
-                                            )
-                                            .fill(egui::Color32::TRANSPARENT)
-                                            .min_size(egui::vec2(240.0, 24.0)),
+                                    let btn = ui.add(
+                                        egui::Button::new(
+                                            RichText::new(&label).color(TEXT_PRIMARY).size(12.0),
                                         )
-                                        .clicked()
-                                    {
-                                        state.connect_host = entry.host.clone();
-                                        state.connect_user = entry.user.clone();
-                                        state.connect_port = entry.port.to_string();
-                                        state.show_connect_dialog = true;
+                                        .fill(egui::Color32::TRANSPARENT)
+                                        .min_size(egui::vec2(240.0, 24.0)),
+                                    );
+                                    if btn.clicked() {
+                                        state.pending_history_reconnect = Some(entry.clone());
                                         state.show_history = false;
                                     }
+                                    btn.context_menu(|ui| {
+                                        if ui.button("Edit").clicked() {
+                                            crate::ui::dialogs::connection::edit_history_entry(
+                                                state, entry,
+                                            );
+                                            state.show_history = false;
+                                            ui.close_menu();
+                                        }
+                                        if ui.button("Save").clicked() {
+                                            state.pending_history_save = Some(entry.clone());
+                                            ui.close_menu();
+                                        }
+                                    });
                                     ui.label(time);
                                 }
                             });
@@ -179,29 +251,105 @@ fn render_history_popup(ui: &mut Ui, state: &mut AppState) {
         });
 }
 
-fn toolbar_btn(ui: &mut Ui, label: &str, active: bool, mut on_click: impl FnMut()) {
+fn toolbar_btn(ui: &mut Ui, icon: Icon, label: &str, active: bool, mut on_click: impl FnMut()) {
     let fill = if active {
         BG_TAB_ACTIVE
     } else {
         egui::Color32::TRANSPARENT
     };
     let text_col = if active { ACCENT } else { TEXT_PRIMARY };
-    let btn = egui::Button::new(RichText::new(label).color(text_col).size(12.0))
-        .fill(fill)
-        .rounding(4.0)
-        .min_size(egui::vec2(0.0, 26.0));
+    let btn = egui::Button::image_and_text(
+        icons::image(icon, 15.0, text_col),
+        RichText::new(label).color(text_col).size(12.5),
+    )
+    .fill(fill)
+    .rounding(RADIUS_MD)
+    .min_size(egui::vec2(0.0, 30.0));
     if ui.add(btn).clicked() {
         on_click();
     }
 }
 
-fn toolbar_btn_enabled(ui: &mut Ui, label: &str, enabled: bool, on_click: impl FnMut()) {
+fn toolbar_btn_enabled(
+    ui: &mut Ui,
+    icon: Icon,
+    label: &str,
+    enabled: bool,
+    on_click: impl FnMut(),
+) {
     ui.add_enabled_ui(enabled, |ui| {
-        toolbar_btn(ui, label, false, on_click);
+        toolbar_btn(ui, icon, label, false, on_click);
+    });
+}
+
+fn toolbar_icon_btn(
+    ui: &mut Ui,
+    icon: Icon,
+    enabled: bool,
+    hover: &str,
+    mut on_click: impl FnMut(),
+) {
+    ui.add_enabled_ui(enabled, |ui| {
+        let col = if enabled { TEXT_DIM } else { TEXT_HINT };
+        let btn = egui::Button::image(icons::image(icon, 16.0, col))
+            .fill(egui::Color32::TRANSPARENT)
+            .rounding(RADIUS_MD)
+            .min_size(egui::vec2(30.0, 30.0));
+        if ui.add(btn).on_hover_text(hover).clicked() {
+            on_click();
+        }
     });
 }
 
 fn separator_v(ui: &mut Ui) {
     let (_, rect) = ui.allocate_space(egui::vec2(1.0, 20.0));
     ui.painter().rect_filled(rect, 0.0, BORDER);
+}
+
+fn queue_selected_upload(state: &mut AppState, queue: &TransferQueue) {
+    let Some(name) = state.local_selected.clone() else {
+        return;
+    };
+    let Some(tab) = state.active_tab_ref() else {
+        return;
+    };
+    let connection_id = tab.id.clone();
+    let remote_dir = tab.remote_path.clone();
+    let local_path = format!("{}/{}", state.local_path.trim_end_matches('/'), name);
+    let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), name);
+    let task = TransferTask::new(
+        TransferKind::Upload,
+        connection_id,
+        local_path,
+        remote_path,
+        name.clone(),
+        0,
+    );
+    queue.push(task);
+    state.status_message = format!("Upload queued: {}", name);
+}
+
+fn queue_selected_download(state: &mut AppState, queue: &TransferQueue) {
+    let Some(tab) = state.active_tab_ref() else {
+        return;
+    };
+    let Some(name) = tab.remote_selected.clone() else {
+        return;
+    };
+    let Some(entry) = tab.remote_entries.iter().find(|e| e.name == name) else {
+        return;
+    };
+    let connection_id = tab.id.clone();
+    let remote_path = entry.path.clone();
+    let local_path = format!("{}/{}", state.local_path.trim_end_matches('/'), name);
+    let task = TransferTask::new(
+        TransferKind::Download,
+        connection_id,
+        local_path,
+        remote_path,
+        name.clone(),
+        0,
+    );
+    queue.push(task);
+    state.status_message = format!("Download queued: {}", name);
 }
