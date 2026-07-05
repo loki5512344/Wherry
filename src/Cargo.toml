@@ -35,4 +35,6 @@ chrono = "0.4"
 futures-lite = "2"
 image = "0.25"
 muda = "0.19.3"
+egui_dock = "0.14"
+rfd = "0.15"
 

@@ -4,7 +4,8 @@ use crate::ui::icons::{self, Icon};
 use crate::ui::panels::file_pane::format_size;
 use crate::ui::state::AppState;
 use crate::ui::theme::*;
-use egui::{Color32, RichText, Ui};
+use crate::ui::widgets::button;
+use egui::{RichText, Ui};
 
 pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
     // Заголовок очереди (всегда виден)
@@ -28,11 +29,8 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
                     .filter(|t| matches!(t.state, TaskState::Running | TaskState::Queued))
                     .count();
 
-                let title = if n_active > 0 {
-                    format!("Transfer Queue  ({})", n_active)
-                } else {
-                    format!("Transfer Queue  ({})", tasks.len())
-                };
+                let n = if n_active > 0 { n_active } else { tasks.len() };
+                let title = crate::i18n::tf("queue.title", &[("{n}", &n.to_string())]);
 
                 let btn = egui::Button::image_and_text(
                     icons::image(chevron, 13.0, TEXT_DIM),
@@ -41,10 +39,9 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
                         .size(11.5)
                         .strong(),
                 )
-                .fill(Color32::TRANSPARENT)
                 .min_size(egui::vec2(0.0, QUEUE_COLLAPSED_H));
 
-                if ui.add(btn).clicked() {
+                if button::ghost(ui, btn).clicked() {
                     state.show_queue = !state.show_queue;
                 }
 
@@ -72,16 +69,22 @@ pub fn render(ui: &mut Ui, state: &mut AppState, tasks: &[TransferTask]) {
                             .filter(|t| matches!(t.state, TaskState::Failed(_)))
                             .count();
                         ui.label(
-                            RichText::new(format!("{}/{} done", done, tasks.len()))
-                                .color(TEXT_DIM)
-                                .size(11.0),
+                            RichText::new(crate::i18n::tf(
+                                "queue.done_suffix",
+                                &[("{done}", &done.to_string()), ("{total}", &tasks.len().to_string())],
+                            ))
+                            .color(TEXT_DIM)
+                            .size(11.0),
                         );
                         if failed > 0 {
                             ui.add_space(8.0);
                             ui.label(
-                                RichText::new(format!("{} failed", failed))
-                                    .color(RED)
-                                    .size(11.0),
+                                RichText::new(crate::i18n::tf(
+                                    "queue.failed_suffix",
+                                    &[("{n}", &failed.to_string())],
+                                ))
+                                .color(RED)
+                                .size(11.0),
                             );
                         }
                     }
@@ -147,6 +150,7 @@ fn render_task(ui: &mut Ui, task: &TransferTask) {
         };
         let bar = egui::ProgressBar::new(pct)
             .desired_width(ui.available_width() - 130.0)
+            .animate(matches!(task.state, TaskState::Running))
             .fill(bar_col);
         ui.add(bar);
         ui.add_space(10.0);
@@ -160,16 +164,34 @@ fn render_task(ui: &mut Ui, task: &TransferTask) {
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let (state_str, state_col, state_icon) = match &task.state {
-                TaskState::Queued => ("Queued".to_string(), TEXT_HINT, None),
+                TaskState::Queued => (crate::i18n::t("queue.state_queued").to_string(), TEXT_HINT, None),
                 TaskState::Running => match task.speed {
                     Some(s) if s > 0 => (format!("{}/s", format_size(Some(s))), GREEN, None),
-                    _ => ("Uploading".to_string(), ACCENT, None),
+                    _ => {
+                        let verb = match task.kind {
+                            TransferKind::Upload => "queue.state_uploading",
+                            TransferKind::Download => "queue.state_downloading",
+                        };
+                        (crate::i18n::t(verb).to_string(), ACCENT, None)
+                    }
                 },
-                TaskState::Completed => ("Complete".to_string(), GREEN, Some(Icon::CheckCircle)),
-                TaskState::Failed(_) => ("Failed".to_string(), RED, None),
-                TaskState::Paused => ("Paused".to_string(), YELLOW, Some(Icon::PlayCircle)),
-                TaskState::Cancelled => ("Cancelled".to_string(), TEXT_HINT, None),
-                TaskState::Retrying(_) => ("Retrying".to_string(), YELLOW, None),
+                TaskState::Completed => (
+                    crate::i18n::t("queue.state_complete").to_string(),
+                    GREEN,
+                    Some(Icon::CheckCircle),
+                ),
+                TaskState::Failed(_) => (crate::i18n::t("queue.state_failed").to_string(), RED, None),
+                TaskState::Paused => (
+                    crate::i18n::t("queue.state_paused").to_string(),
+                    YELLOW,
+                    Some(Icon::PlayCircle),
+                ),
+                TaskState::Cancelled => {
+                    (crate::i18n::t("queue.state_cancelled").to_string(), TEXT_HINT, None)
+                }
+                TaskState::Retrying(_) => {
+                    (crate::i18n::t("queue.state_retrying").to_string(), YELLOW, None)
+                }
             };
             if let Some(ic) = state_icon {
                 icons::icon(ui, ic, 13.0, state_col);

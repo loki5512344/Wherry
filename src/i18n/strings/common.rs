@@ -1,0 +1,240 @@
+//! Общие термины, повторяющиеся в разных экранах (кнопки, поля форм) —
+//! вынесены отдельно от контекста, чтобы не переводить одно и то же слово
+//! по три раза с риском разойтись в формулировках.
+use super::Entry;
+
+pub const ENTRIES: &[Entry] = &[
+    (
+        "common.cancel",
+        [
+            "Cancel", "Отмена", "Cancelar", "Annuler", "Abbrechen", "Annulla", "Cancelar",
+            "Anuluj", "取消", "キャンセル", "취소", "İptal",
+        ],
+    ),
+    (
+        "common.ok",
+        [
+            "OK", "ОК", "Aceptar", "OK", "OK", "OK", "OK", "OK", "确定", "OK", "확인", "Tamam",
+        ],
+    ),
+    (
+        "common.delete",
+        [
+            "Delete", "Удалить", "Eliminar", "Supprimer", "Löschen", "Elimina", "Excluir",
+            "Usuń", "删除", "削除", "삭제", "Sil",
+        ],
+    ),
+    (
+        "common.rename",
+        [
+            "Rename",
+            "Переименовать",
+            "Renombrar",
+            "Renommer",
+            "Umbenennen",
+            "Rinomina",
+            "Renomear",
+            "Zmień nazwę",
+            "重命名",
+            "名前を変更",
+            "이름 바꾸기",
+            "Yeniden Adlandır",
+        ],
+    ),
+    (
+        "common.edit",
+        [
+            "Edit", "Изменить", "Editar", "Modifier", "Bearbeiten", "Modifica", "Editar",
+            "Edytuj", "编辑", "編集", "편집", "Düzenle",
+        ],
+    ),
+    (
+        "common.save",
+        [
+            "Save", "Сохранить", "Guardar", "Enregistrer", "Speichern", "Salva", "Salvar",
+            "Zapisz", "保存", "保存", "저장", "Kaydet",
+        ],
+    ),
+    (
+        "common.open",
+        [
+            "Open", "Открыть", "Abrir", "Ouvrir", "Öffnen", "Apri", "Abrir", "Otwórz", "打开",
+            "開く", "열기", "Aç",
+        ],
+    ),
+    (
+        "common.close",
+        [
+            "Close", "Закрыть", "Cerrar", "Fermer", "Schließen", "Chiudi", "Fechar", "Zamknij",
+            "关闭", "閉じる", "닫기", "Kapat",
+        ],
+    ),
+    (
+        "common.copy_path",
+        [
+            "Copy Path",
+            "Скопировать путь",
+            "Copiar ruta",
+            "Copier le chemin",
+            "Pfad kopieren",
+            "Copia percorso",
+            "Copiar caminho",
+            "Kopiuj ścieżkę",
+            "复制路径",
+            "パスをコピー",
+            "경로 복사",
+            "Yolu Kopyala",
+        ],
+    ),
+    (
+        "common.new_folder",
+        [
+            "New Folder",
+            "Новая папка",
+            "Nueva carpeta",
+            "Nouveau dossier",
+            "Neuer Ordner",
+            "Nuova cartella",
+            "Nova pasta",
+            "Nowy folder",
+            "新建文件夹",
+            "新規フォルダ",
+            "새 폴더",
+            "Yeni Klasör",
+        ],
+    ),
+    (
+        "common.connect",
+        [
+            "Connect", "Подключить", "Conectar", "Connecter", "Verbinden", "Connetti",
+            "Conectar", "Połącz", "连接", "接続", "연결", "Bağlan",
+        ],
+    ),
+    (
+        "common.connecting",
+        [
+            "Connecting…",
+            "Подключение…",
+            "Conectando…",
+            "Connexion…",
+            "Verbinde…",
+            "Connessione…",
+            "Conectando…",
+            "Łączenie…",
+            "正在连接…",
+            "接続中…",
+            "연결 중…",
+            "Bağlanıyor…",
+        ],
+    ),
+    (
+        "common.host",
+        [
+            "Host", "Хост", "Host", "Hôte", "Host", "Host", "Host", "Host", "主机", "ホスト",
+            "호스트", "Sunucu",
+        ],
+    ),
+    (
+        "common.username",
+        [
+            "Username",
+            "Имя пользователя",
+            "Usuario",
+            "Nom d'utilisateur",
+            "Benutzername",
+            "Nome utente",
+            "Usuário",
+            "Nazwa użytkownika",
+            "用户名",
+            "ユーザー名",
+            "사용자 이름",
+            "Kullanıcı Adı",
+        ],
+    ),
+    (
+        "common.password",
+        [
+            "Password", "Пароль", "Contraseña", "Mot de passe", "Passwort", "Password", "Senha",
+            "Hasło", "密码", "パスワード", "비밀번호", "Parola",
+        ],
+    ),
+    (
+        "common.port",
+        [
+            "Port", "Порт", "Puerto", "Port", "Port", "Porta", "Porta", "Port", "端口", "ポート",
+            "포트", "Port",
+        ],
+    ),
+    (
+        "common.label",
+        [
+            "Label", "Метка", "Etiqueta", "Étiquette", "Bezeichnung", "Etichetta", "Rótulo",
+            "Etykieta", "标签", "ラベル", "라벨", "Etiket",
+        ],
+    ),
+    (
+        "common.refresh",
+        [
+            "Refresh", "Обновить", "Actualizar", "Actualiser", "Aktualisieren", "Aggiorna",
+            "Atualizar", "Odśwież", "刷新", "更新", "새로고침", "Yenile",
+        ],
+    ),
+    (
+        "common.upload",
+        [
+            "Upload", "Загрузить", "Subir", "Envoyer", "Hochladen", "Carica", "Enviar",
+            "Prześlij", "上传", "アップロード", "업로드", "Yükle",
+        ],
+    ),
+    (
+        "common.download",
+        [
+            "Download", "Скачать", "Descargar", "Télécharger", "Herunterladen", "Scarica",
+            "Baixar", "Pobierz", "下载", "ダウンロード", "다운로드", "İndir",
+        ],
+    ),
+    (
+        "common.settings",
+        [
+            "Settings",
+            "Настройки",
+            "Configuración",
+            "Paramètres",
+            "Einstellungen",
+            "Impostazioni",
+            "Configurações",
+            "Ustawienia",
+            "设置",
+            "設定",
+            "설정",
+            "Ayarlar",
+        ],
+    ),
+    (
+        "common.history",
+        [
+            "History", "История", "Historial", "Historique", "Verlauf", "Cronologia",
+            "Histórico", "Historia", "历史记录", "履歴", "기록", "Geçmiş",
+        ],
+    ),
+    (
+        "common.search",
+        [
+            "Search", "Поиск", "Buscar", "Rechercher", "Suchen", "Cerca", "Pesquisar", "Szukaj",
+            "搜索", "検索", "검색", "Ara",
+        ],
+    ),
+    (
+        "common.yes",
+        [
+            "Yes", "Да", "Sí", "Oui", "Ja", "Sì", "Sim", "Tak", "是", "はい", "예", "Evet",
+        ],
+    ),
+    (
+        "common.no",
+        [
+            "No", "Нет", "No", "Non", "Nein", "No", "Não", "Nie", "否", "いいえ", "아니요",
+            "Hayır",
+        ],
+    ),
+];

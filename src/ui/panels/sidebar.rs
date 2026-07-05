@@ -1,8 +1,10 @@
 //! Левая боковая панель — bookmarks + места
+use crate::i18n::t;
 use crate::ui::icons::{self, Icon};
 use crate::ui::panels::local_pane::refresh_local;
 use crate::ui::state::AppState;
 use crate::ui::theme::*;
+use crate::ui::widgets::row::clickable_row;
 use egui::{RichText, Ui};
 use std::sync::{Arc, Mutex};
 
@@ -12,20 +14,18 @@ pub fn render(ui: &mut Ui, state: &mut AppState, db: &Arc<Mutex<rusqlite::Connec
         .inner_margin(egui::Margin::symmetric(0.0, 0.0));
 
     frame.show(ui, |ui| {
-        ui.set_width(SIDEBAR_W);
-
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 ui.add_space(8.0);
 
-                section_header(ui, "LOCAL");
+                section_header(ui, t("panels.local_label"));
                 ui.add_space(4.0);
 
                 for qa in &state.quick_access.clone() {
                     let is_active = state.local_path == qa.path;
                     let icon = quick_access_icon(&qa.name);
-                    sidebar_item(ui, icon, &qa.name, is_active, || {
+                    sidebar_item(ui, icon, quick_access_label(&qa.name), is_active, || {
                         state.local_path = qa.path.clone();
                         refresh_local(state);
                     });
@@ -35,15 +35,21 @@ pub fn render(ui: &mut Ui, state: &mut AppState, db: &Arc<Mutex<rusqlite::Connec
                 section_divider(ui);
                 ui.add_space(6.0);
 
-                section_header(ui, "DRIVES");
+                section_header(ui, t("panels.sidebar.drives"));
                 ui.add_space(4.0);
 
                 // Root + data drives
                 let root_active = state.local_path == "/";
-                sidebar_item(ui, Icon::Ssd, "/ (root)", root_active, || {
-                    state.local_path = "/".into();
-                    refresh_local(state);
-                });
+                sidebar_item(
+                    ui,
+                    Icon::Ssd,
+                    t("panels.sidebar.root_label"),
+                    root_active,
+                    || {
+                        state.local_path = "/".into();
+                        refresh_local(state);
+                    },
+                );
 
                 // попытаемся найти /media и /mnt точки монтирования
                 for mount_path in find_mounts() {
@@ -58,34 +64,23 @@ pub fn render(ui: &mut Ui, state: &mut AppState, db: &Arc<Mutex<rusqlite::Connec
                     });
                 }
 
-                ui.add_space(10.0);
-                section_divider(ui);
-                ui.add_space(6.0);
+                if !state.bookmarks.is_empty() {
+                    ui.add_space(10.0);
+                    section_divider(ui);
+                    ui.add_space(6.0);
 
-                section_header(ui, "BOOKMARKS");
-                ui.add_space(4.0);
+                    section_header(ui, t("panels.sidebar.bookmarks"));
+                    ui.add_space(4.0);
 
-                if state.bookmarks.is_empty() {
-                    ui.label(
-                        RichText::new("  No bookmarks yet")
-                            .color(TEXT_HINT)
-                            .size(11.0),
-                    );
-                    ui.label(
-                        RichText::new("  Use ★ in file list")
-                            .color(TEXT_HINT)
-                            .size(10.0),
-                    );
-                } else {
                     let mut to_remove: Option<i64> = None;
                     for bm in &state.bookmarks.clone() {
                         let is_active = state.local_path == bm.path;
-                        sidebar_item(ui, Icon::Star, &bm.name, is_active, || {
+                        let resp = sidebar_item(ui, Icon::Star, &bm.name, is_active, || {
                             state.local_path = bm.path.clone();
                             refresh_local(state);
-                        })
-                        .context_menu(|ui| {
-                            if ui.button("Remove bookmark").clicked() {
+                        });
+                        crate::ui::widgets::context_menu::context_menu(&resp, |ui| {
+                            if ui.button(t("panels.sidebar.remove_bookmark")).clicked() {
                                 to_remove = Some(bm.id);
                                 ui.close_menu();
                             }
@@ -123,35 +118,16 @@ fn sidebar_item(
     active: bool,
     mut on_click: impl FnMut(),
 ) -> egui::Response {
-    let bg = if active {
-        BG_ROW_SEL
-    } else {
-        egui::Color32::TRANSPARENT
-    };
-    let text_col = TEXT_PRIMARY;
     let icon_col = if active { ACCENT } else { TEXT_DIM };
-
-    let resp = egui::Frame::none()
-        .fill(bg)
-        .rounding(RADIUS_SM)
-        .inner_margin(egui::Margin::symmetric(8.0, 0.0))
-        .show(ui, |ui| {
-            ui.allocate_ui_with_layout(
-                egui::vec2(SIDEBAR_W - 32.0, 28.0),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| {
-                    icons::icon(ui, icon, 14.0, icon_col);
-                    ui.add_space(8.0);
-                    ui.label(RichText::new(label).color(text_col).size(12.5));
-                },
-            );
-        });
-
-    let response = resp.response.interact(egui::Sense::click());
-    if response.clicked() {
+    let resp = clickable_row(ui, active, 28.0, |ui| {
+        icons::icon(ui, icon, 14.0, icon_col);
+        ui.add_space(8.0);
+        ui.label(RichText::new(label).color(TEXT_PRIMARY).size(12.5));
+    });
+    if resp.clicked() {
         on_click();
     }
-    response
+    resp
 }
 
 fn quick_access_icon(name: &str) -> Icon {
@@ -164,6 +140,22 @@ fn quick_access_icon(name: &str) -> Icon {
         "Music" => Icon::MusicNote,
         "Videos" => Icon::Videocamera,
         _ => Icon::Folder,
+    }
+}
+
+/// `state.quick_access[].name` — стабильный английский идентификатор (нужен
+/// для матчинга иконки в [`quick_access_icon`] и не должен зависеть от языка);
+/// здесь он превращается в переведённую подпись для показа в сайдбаре.
+fn quick_access_label(name: &str) -> &'static str {
+    match name {
+        "Home" => t("panels.sidebar.qa_home"),
+        "Desktop" => t("panels.sidebar.qa_desktop"),
+        "Documents" => t("panels.sidebar.qa_documents"),
+        "Downloads" => t("panels.sidebar.qa_downloads"),
+        "Pictures" => t("panels.sidebar.qa_pictures"),
+        "Music" => t("panels.sidebar.qa_music"),
+        "Videos" => t("panels.sidebar.qa_videos"),
+        _ => "",
     }
 }
 

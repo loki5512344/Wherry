@@ -4,5 +4,4 @@ pub mod queue;
 pub mod remote_pane;
 pub mod sidebar;
 pub mod status_bar;
-pub mod tabs;
 pub mod toolbar;

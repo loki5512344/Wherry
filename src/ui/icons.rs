@@ -3,6 +3,7 @@ use egui::{Color32, Ui};
 
 macro_rules! icon_set {
     ($($key:ident => $file:literal),* $(,)?) => {
+        #[derive(Clone, Copy, PartialEq, Eq)]
         pub enum Icon { $($key),* }
 
         fn bytes(icon: &Icon) -> &'static [u8] {

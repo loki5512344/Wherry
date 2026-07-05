@@ -6,6 +6,18 @@ use crate::ui::state::AppState;
 mod ids {
     pub const SETTINGS: &str = "loflum-settings";
     pub const NEW_CONNECTION: &str = "loflum-new-connection";
+    pub const SHOW_TOOLBAR: &str = "loflum-show-toolbar";
+    pub const SHOW_SIDEBAR: &str = "loflum-show-sidebar";
+    pub const SHOW_STATUS_BAR: &str = "loflum-show-status-bar";
+    pub const SHOW_QUEUE: &str = "loflum-show-queue";
+}
+
+// muda использует Rc внутри (не Send/Sync) — держим пункты меню, отражающие
+// видимость панелей, в thread_local, чтобы синхронизировать галочки с AppState.
+#[cfg(target_os = "macos")]
+thread_local! {
+    static PANEL_CHECK_ITEMS: std::cell::RefCell<Option<[muda::CheckMenuItem; 4]>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Строит нативное меню macOS: App-меню (с "Settings…"), File, Edit, Window.
@@ -60,13 +72,29 @@ pub fn setup_native_menu() {
         &PredefinedMenuItem::select_all(None),
     ]);
 
+    let show_toolbar = muda::CheckMenuItem::with_id(ids::SHOW_TOOLBAR, "Toolbar", true, true, None);
+    let show_sidebar = muda::CheckMenuItem::with_id(ids::SHOW_SIDEBAR, "Sidebar", true, true, None);
+    let show_status_bar =
+        muda::CheckMenuItem::with_id(ids::SHOW_STATUS_BAR, "Status Bar", true, true, None);
+    let show_queue =
+        muda::CheckMenuItem::with_id(ids::SHOW_QUEUE, "Transfer Queue", true, true, None);
+
     let window_menu = Submenu::new("Window", true);
     let _ = window_menu.append_items(&[
         &PredefinedMenuItem::minimize(None),
         &PredefinedMenuItem::maximize(None),
         &PredefinedMenuItem::separator(),
+        &show_toolbar,
+        &show_sidebar,
+        &show_status_bar,
+        &show_queue,
+        &PredefinedMenuItem::separator(),
         &PredefinedMenuItem::bring_all_to_front(None),
     ]);
+
+    PANEL_CHECK_ITEMS.with(|cell| {
+        *cell.borrow_mut() = Some([show_toolbar, show_sidebar, show_status_bar, show_queue]);
+    });
 
     let _ = menu.append_items(&[&app_menu, &file_menu, &edit_menu, &window_menu]);
 
@@ -89,8 +117,28 @@ pub fn poll_menu_events(state: &mut AppState) {
             state.show_settings_dialog = true;
         } else if id == ids::NEW_CONNECTION {
             state.show_connect_dialog = true;
+        } else if id == ids::SHOW_TOOLBAR {
+            state.show_toolbar = !state.show_toolbar;
+        } else if id == ids::SHOW_SIDEBAR {
+            state.show_sidebar = !state.show_sidebar;
+        } else if id == ids::SHOW_STATUS_BAR {
+            state.show_status_bar = !state.show_status_bar;
+        } else if id == ids::SHOW_QUEUE {
+            state.show_queue_panel = !state.show_queue_panel;
         }
     }
+
+    // Держим галочки в меню в согласии с state — независимо от того, что
+    // именно их поменяло (клик по меню или чекбокс в Settings).
+    PANEL_CHECK_ITEMS.with(|cell| {
+        if let Some(items) = cell.borrow().as_ref() {
+            let [toolbar, sidebar, status_bar, queue] = items;
+            toolbar.set_checked(state.show_toolbar);
+            sidebar.set_checked(state.show_sidebar);
+            status_bar.set_checked(state.show_status_bar);
+            queue.set_checked(state.show_queue_panel);
+        }
+    });
 }
 
 #[cfg(not(target_os = "macos"))]

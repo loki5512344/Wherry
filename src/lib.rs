@@ -1,5 +1,6 @@
 pub mod domain;
 pub mod fs;
+pub mod i18n;
 pub mod protocols;
 pub mod storage;
 pub mod transfer;
@@ -9,6 +10,7 @@ use crate::fs::remote::RemoteRegistry;
 use crate::transfer::queue::TransferQueue;
 use crate::ui::app::FileManagerApp;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU32;
 
 pub fn run() {
     tracing_subscriber::fmt().with_target(false).init();
@@ -35,9 +37,18 @@ pub fn run() {
     let registry = Arc::new(RemoteRegistry::default());
     let queue = TransferQueue::default();
 
-    transfer::worker::spawn_worker(queue.clone(), registry.clone(), rt_handle);
+    // Реальное значение подтягивается из БД внутри FileManagerApp::new —
+    // здесь только общий на воркер и UI атомик, который Settings → Transfers
+    // меняет на лету.
+    let max_concurrent = Arc::new(AtomicU32::new(2));
+    transfer::worker::spawn_worker(
+        queue.clone(),
+        registry.clone(),
+        rt_handle,
+        max_concurrent.clone(),
+    );
 
-    let app = FileManagerApp::new(registry, queue, rt, db, sites);
+    let app = FileManagerApp::new(registry, queue, rt, db, sites, max_concurrent);
 
     let icon = load_app_icon();
 

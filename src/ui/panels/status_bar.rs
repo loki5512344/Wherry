@@ -62,7 +62,11 @@ pub fn render(ui: &mut egui::Ui, state: &AppState) {
                                 .size(11.0),
                         );
                     } else {
-                        ui.label(RichText::new("Not connected").color(TEXT_HINT).size(11.0));
+                        ui.label(
+                            RichText::new(crate::i18n::t("status.not_connected"))
+                                .color(TEXT_HINT)
+                                .size(11.0),
+                        );
                     }
                 });
             },
