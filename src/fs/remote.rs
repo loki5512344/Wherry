@@ -27,7 +27,7 @@ impl RemoteRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::file_entry::{EntryKind, FileEntry};
+    use crate::domain::{EntryKind, FileEntry};
     use crate::protocols::ProgressAction;
 
     struct MockFs;

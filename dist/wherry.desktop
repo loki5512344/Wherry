@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Wherry
+Comment=FTP/SFTP client with dual-pane file manager
+Exec=wherry
+Icon=wherry
+Categories=Network;FileTransfer;Utility;
+Terminal=false
+StartupNotify=true

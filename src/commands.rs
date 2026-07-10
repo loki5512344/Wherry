@@ -3,23 +3,23 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use tauri::State;
 use tauri::Manager;
+use tauri::State;
 
-use crate::domain::connection::{ConnectionParams, Protocol};
-use crate::domain::error::AppError;
-use crate::domain::file_entry::FileEntry;
-use crate::domain::site::Site;
-use crate::domain::transfer::{TaskState, TransferKind, TransferTask};
-use crate::domain::window_state::WindowState;
+use crate::domain::{
+    ConnectionParams, FileEntry, Protocol, Site, TaskState, TransferKind, TransferTask,
+};
+use crate::error::AppError;
 use crate::fs::remote::RemoteRegistry;
 use crate::protocols::{
     RemoteFs,
     ftp::{FtpClient, FtpsClient},
     sftp::SftpClient,
 };
-use crate::storage::db::{self, HistoryRow};
-use crate::transfer::queue::TransferQueue;
+use crate::settings;
+use crate::storage::{self, HistoryRow};
+use crate::transfers::queue::TransferQueue;
+use crate::window::WindowState;
 
 pub struct AppState {
     pub db: Arc<std::sync::Mutex<rusqlite::Connection>>,
@@ -46,7 +46,7 @@ pub async fn connect(
         .lock()
         .ok()
         .and_then(|conn| {
-            db::find_history_conn_id(&conn, &params.host, params.port, &params.username)
+            storage::find_history_conn_id(&conn, &params.host, params.port, &params.username)
                 .ok()
                 .flatten()
         })
@@ -98,7 +98,7 @@ pub async fn connect(
     registry.insert(params.id.clone(), fs);
 
     if let Ok(conn) = db.lock() {
-        let _ = db::add_history_entry(
+        let _ = storage::add_history_entry(
             &conn,
             &params.host,
             params.port,
@@ -266,7 +266,7 @@ pub fn remove_task(state: State<'_, AppState>, id: String) {
 pub fn set_max_concurrent(state: State<'_, AppState>, n: u32) {
     state.max_concurrent.store(n.max(1), Ordering::Relaxed);
     if let Ok(conn) = state.db.lock() {
-        db::set_u32(&conn, "max_concurrent_transfers", n.max(1));
+        settings::set_u32(&conn, "max_concurrent_transfers", n.max(1));
     }
 }
 
@@ -278,7 +278,7 @@ pub fn list_sites(state: State<'_, AppState>) -> Result<Vec<Site>, AppError> {
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::get_sites(&conn)?)
+    Ok(storage::get_sites(&conn)?)
 }
 
 #[tauri::command]
@@ -287,7 +287,7 @@ pub fn save_site(state: State<'_, AppState>, site: Site) -> Result<(), AppError>
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::save_site(&conn, &site)?)
+    Ok(storage::save_site(&conn, &site)?)
 }
 
 #[tauri::command]
@@ -296,7 +296,7 @@ pub fn delete_site(state: State<'_, AppState>, id: String) -> Result<(), AppErro
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::delete_site(&conn, &id)?)
+    Ok(storage::delete_site(&conn, &id)?)
 }
 
 #[tauri::command]
@@ -305,7 +305,7 @@ pub fn list_bookmarks(state: State<'_, AppState>) -> Result<Vec<(i64, String, St
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::get_bookmarks(&conn)?)
+    Ok(settings::get_bookmarks(&conn)?)
 }
 
 #[tauri::command]
@@ -318,7 +318,7 @@ pub fn add_bookmark(
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::add_bookmark(&conn, &name, &path)?)
+    Ok(settings::add_bookmark(&conn, &name, &path)?)
 }
 
 #[tauri::command]
@@ -327,7 +327,7 @@ pub fn remove_bookmark(state: State<'_, AppState>, id: i64) -> Result<(), AppErr
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::remove_bookmark(&conn, id)?)
+    Ok(settings::remove_bookmark(&conn, id)?)
 }
 
 #[tauri::command]
@@ -336,7 +336,7 @@ pub fn list_history(state: State<'_, AppState>) -> Result<Vec<HistoryRow>, AppEr
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::get_history(&conn)?)
+    Ok(storage::get_history(&conn)?)
 }
 
 #[tauri::command]
@@ -345,7 +345,7 @@ pub fn clear_history(state: State<'_, AppState>) -> Result<(), AppError> {
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::clear_history(&conn)?)
+    Ok(storage::clear_history(&conn)?)
 }
 
 #[tauri::command]
@@ -359,7 +359,9 @@ pub fn find_history_conn_id(
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::find_history_conn_id(&conn, &host, port, &username)?)
+    Ok(storage::find_history_conn_id(
+        &conn, &host, port, &username,
+    )?)
 }
 
 #[tauri::command]
@@ -368,19 +370,21 @@ pub fn get_pref(state: State<'_, AppState>, key: String) -> Result<Option<String
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::get_setting(&conn, &key))
+    Ok(settings::get_setting(&conn, &key))
 }
 
 #[tauri::command]
 pub fn set_pref(state: State<'_, AppState>, key: String, value: String) -> Result<(), AppError> {
-    if key == "auto_clear_completed_secs" && let Ok(secs) = value.parse::<u32>() {
+    if key == "auto_clear_completed_secs"
+        && let Ok(secs) = value.parse::<u32>()
+    {
         state.auto_clear_secs.store(secs, Ordering::Relaxed);
     }
     let conn = state
         .db
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(db::set_setting(&conn, &key, &value)?)
+    Ok(settings::set_setting(&conn, &key, &value)?)
 }
 
 /// Удалить пароль из сохранённого сайта (очистить поле password в БД).
@@ -454,7 +458,7 @@ pub fn save_window_state(
     let key = format!("window_state_{}", window_state.label);
     let json =
         serde_json::to_string(&window_state).map_err(|e| AppError::Internal(e.to_string()))?;
-    db::set_setting(&conn, &key, &json)?;
+    settings::set_setting(&conn, &key, &json)?;
     Ok(())
 }
 
@@ -468,7 +472,7 @@ pub fn load_window_state(
         .lock()
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let key = format!("window_state_{}", label);
-    match db::get_setting(&conn, &key) {
+    match settings::get_setting(&conn, &key) {
         Some(json) => {
             let ws: WindowState =
                 serde_json::from_str(&json).map_err(|e| AppError::Internal(e.to_string()))?;
@@ -484,17 +488,14 @@ pub async fn new_window(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let label = format!("browser-{}", uuid::Uuid::new_v4());
-    let window = tauri::WebviewWindowBuilder::new(
-        &app_handle,
-        &label,
-        tauri::WebviewUrl::App("/".into()),
-    )
-    .title("Wherry")
-    .inner_size(1280.0, 800.0)
-    .min_inner_size(900.0, 600.0)
-    .center()
-    .build()
-    .map_err(|e| e.to_string())?;
+    let window =
+        tauri::WebviewWindowBuilder::new(&app_handle, &label, tauri::WebviewUrl::App("/".into()))
+            .title("Wherry")
+            .inner_size(1280.0, 800.0)
+            .min_inner_size(900.0, 600.0)
+            .center()
+            .build()
+            .map_err(|e| e.to_string())?;
 
     let db = state.db.clone();
     let app_handle = app_handle.clone();
@@ -516,12 +517,10 @@ pub(crate) fn save_window_state_internal(
 ) {
     let label = window.label().to_string();
     let pos = window.outer_position().ok();
-    let size = window
-        .outer_size()
-        .unwrap_or(tauri::PhysicalSize {
-            width: 1280,
-            height: 800,
-        });
+    let size = window.outer_size().unwrap_or(tauri::PhysicalSize {
+        width: 1280,
+        height: 800,
+    });
     let maximized = window.is_maximized().unwrap_or(false);
 
     let ws = WindowState {
@@ -536,7 +535,7 @@ pub(crate) fn save_window_state_internal(
     if let Ok(conn) = db.lock() {
         let key = format!("window_state_{}", label);
         if let Ok(json) = serde_json::to_string(&ws) {
-            let _ = db::set_setting(&conn, &key, &json);
+            let _ = settings::set_setting(&conn, &key, &json);
         }
     }
 }

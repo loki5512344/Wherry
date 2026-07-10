@@ -1,8 +1,10 @@
 pub mod ftp;
-pub use ftp::FtpsClient;
 pub mod sftp;
 
-use crate::domain::file_entry::FileEntry;
+pub use ftp::{FtpClient, FtpsClient};
+pub use sftp::SftpClient;
+
+use crate::domain::FileEntry;
 use anyhow::Result;
 use async_trait::async_trait;
 

@@ -1,4 +1,4 @@
-use crate::domain::file_entry::{EntryKind, FileEntry};
+use crate::domain::{EntryKind, FileEntry};
 use anyhow::Result;
 use std::fs;
 

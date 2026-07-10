@@ -1,5 +1,9 @@
 node_modules/
-dist/
+dist/*.tar.gz
+dist/*.zip
+dist/*.deb
+dist/*.rpm
+dist/pkg/
 target/
 .tauri/
 src/target/

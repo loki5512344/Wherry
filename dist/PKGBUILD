@@ -1,0 +1,43 @@
+# Maintainer: loki5512344 <dev14dbq@gmail.com>
+# Contributor: Your name <your@email.com>
+
+pkgname=wherry
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A modern dual-pane file manager with SFTP/FTP/FTPS support"
+arch=('x86_64')
+url='https://github.com/loki5512344/Wherry'
+license=('GPL3')
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'libsoup-3.0'
+  'librsvg'
+  'libappindicator-gtk3'
+  'libdbus-1'
+  'openssl'
+)
+makedepends=(
+  'cargo'
+  'rust'
+  'patchelf'
+)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/loki5512344/Wherry/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver/src"
+}
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver/src"
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo build --release --frozen
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver/src"
+  install -Dm755 target/release/wherry "$pkgdir/usr/bin/wherry"
+  install -Dm644 icons/128x128.png "$pkgdir/usr/share/pixmaps/wherry.png"
+  install -Dm644 dist/wherry.desktop "$pkgdir/usr/share/applications/wherry.desktop"
+}

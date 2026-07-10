@@ -1,18 +1,66 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio::time::sleep;
 
-use crate::domain::transfer::{TaskState, TransferKind, TransferTask};
+use crate::domain::{TaskState, TransferKind, TransferTask};
 use crate::fs::remote::RemoteRegistry;
 use crate::protocols::ProgressAction;
-use crate::transfer::progress::ProgressThrottle;
-use crate::transfer::queue::TransferQueue;
+use crate::transfers::queue::TransferQueue;
 
 const POLL_INTERVAL_MS: u64 = 200;
+
+pub struct ProgressThrottle {
+    last_emit: Instant,
+    interval: Duration,
+}
+
+impl Default for ProgressThrottle {
+    fn default() -> Self {
+        Self {
+            last_emit: Instant::now() - Duration::from_secs(1),
+            interval: Duration::from_millis(100),
+        }
+    }
+}
+
+impl ProgressThrottle {
+    pub fn should_emit(&mut self) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.last_emit) >= self.interval {
+            self.last_emit = now;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn force(&mut self) -> bool {
+        self.last_emit = Instant::now() - self.interval;
+        true
+    }
+}
+
+pub struct TransferManager {
+    pub queue: TransferQueue,
+    pub registry: Arc<RemoteRegistry>,
+}
+
+impl TransferManager {
+    pub fn new(registry: Arc<RemoteRegistry>) -> Arc<Self> {
+        Arc::new(Self {
+            queue: TransferQueue::default(),
+            registry,
+        })
+    }
+
+    pub fn registry(&self) -> &RemoteRegistry {
+        &self.registry
+    }
+}
 
 #[derive(Clone, serde::Serialize)]
 struct ProgressPayload {
@@ -52,9 +100,6 @@ fn emit_state(app: &AppHandle, id: &str, state: TaskState) {
     );
 }
 
-/// Уменьшает счётчик активных передач при выходе из скоупа — в том числе при
-/// панике внутри задачи (Drop отрабатывает и во время размотки стека), иначе
-/// упавшая задача навсегда съедала бы один слот параллелизма.
 struct InFlightGuard(Arc<AtomicUsize>);
 impl Drop for InFlightGuard {
     fn drop(&mut self) {
@@ -62,10 +107,6 @@ impl Drop for InFlightGuard {
     }
 }
 
-/// Запускает диспетчер передач: раз в тик подбирает из очереди задачи со
-/// статусом `Queued` и запускает их параллельно, пока число активных передач
-/// меньше `max_concurrent` — значение читается заново на каждой итерации, так
-/// что Settings → Transfers меняет параллелизм на лету, без перезапуска.
 pub fn spawn_worker(
     queue: TransferQueue,
     registry: Arc<RemoteRegistry>,
@@ -122,7 +163,6 @@ pub fn spawn_worker(
     });
 }
 
-/// Выполняет одну задачу передачи целиком и записывает итог в очередь.
 async fn run_transfer(
     task: TransferTask,
     queue: TransferQueue,
@@ -143,8 +183,6 @@ async fn run_transfer(
         }
     };
 
-    // Progress callback: троттлит обновления очереди до ~10 FPS, считает
-    // текущую скорость и реагирует на отмену/паузу, выставленные пользователем.
     let queue_for_progress = queue.clone();
     let task_id_for_progress = task.id.clone();
     let app_for_progress = app.clone();
@@ -199,7 +237,10 @@ async fn run_transfer(
         Ok(()) => {
             queue.update_state(&task.id, TaskState::Completed);
             queue.update_progress(&task.id, task.total_bytes, 0);
-            completed_at.lock().unwrap().insert(task.id.clone(), Instant::now());
+            completed_at
+                .lock()
+                .unwrap()
+                .insert(task.id.clone(), Instant::now());
             emit_progress(&app, &queue, &task.id);
             emit_state(&app, &task.id, TaskState::Completed);
         }
@@ -222,5 +263,40 @@ async fn run_transfer(
                 emit_state(&app, &task.id, TaskState::Failed(msg));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_first_call_emits() {
+        let mut throttle = ProgressThrottle::default();
+        assert!(throttle.should_emit());
+    }
+
+    #[test]
+    fn test_too_soon_does_not_emit() {
+        let mut throttle = ProgressThrottle::default();
+        throttle.should_emit();
+        assert!(!throttle.should_emit());
+    }
+
+    #[test]
+    fn test_force_resets() {
+        let mut throttle = ProgressThrottle::default();
+        throttle.should_emit();
+        assert!(throttle.force());
+        assert!(throttle.should_emit());
+    }
+
+    #[test]
+    fn test_interval_elapsed_emits() {
+        let mut throttle = ProgressThrottle {
+            last_emit: Instant::now() - Duration::from_millis(200),
+            interval: Duration::from_millis(100),
+        };
+        assert!(throttle.should_emit());
     }
 }

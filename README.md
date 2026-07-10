@@ -10,7 +10,7 @@ FTP/SFTP клиент на Tauri 2: бэкенд на Rust, фронтенд —
 
 <p align="center">
   <img src="docs/img/start_screen.png" alt="Wherry main screen" width="80%" style="max-width:800px;border-radius:10px">
-  <br><em>Welcome-экран с сохранёнными сайтами и историей подключений</em>
+  <br><em>Welcome-экран с сохранёнными сайтами и историей подключений (тема Midnight, нестандартная — в настройках доступно 6 тем)</em>
 </p>
 
 ## Стек

@@ -1,21 +1,8 @@
-//! SQLite-хранилище: схема + операции по таблицам (bookmarks/history/sites).
-use crate::domain::connection::Protocol;
+use crate::domain::{Protocol, Site};
 use anyhow::Result;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
-mod bookmarks;
-mod history;
-mod settings;
-mod sites;
-
-pub use bookmarks::{add_bookmark, get_bookmarks, remove_bookmark};
-pub use history::{
-    add_history_entry, clear_history, find_history_conn_id, get_history, HistoryRow,
-};
-pub use settings::{get_bool, get_setting, get_u32, set_bool, set_setting, set_u32};
-pub use sites::{delete_site, get_sites, save_site};
-
-pub(super) fn protocol_to_str(protocol: &Protocol) -> &'static str {
+fn protocol_to_str(protocol: &Protocol) -> &'static str {
     match protocol {
         Protocol::Sftp => "sftp",
         Protocol::Ftp => "ftp",
@@ -23,7 +10,7 @@ pub(super) fn protocol_to_str(protocol: &Protocol) -> &'static str {
     }
 }
 
-pub(super) fn protocol_from_str(s: &str) -> Protocol {
+fn protocol_from_str(s: &str) -> Protocol {
     match s {
         "sftp" => Protocol::Sftp,
         "ftps" => Protocol::Ftps,
@@ -70,7 +57,6 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
     ",
     )?;
 
-    // Миграции
     let _ = conn.execute("ALTER TABLE connection_history ADD COLUMN conn_id TEXT", []);
     let _ = conn.execute(
         "ALTER TABLE connection_history ADD COLUMN protocol TEXT NOT NULL DEFAULT 'sftp'",
@@ -81,8 +67,6 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
         [],
     );
     let _ = conn.execute("ALTER TABLE sites ADD COLUMN password TEXT", []);
-    // На случай старых записей без уникальности (host,port,username) — оставляем
-    // только самую свежую строку на каждую цель перед созданием индекса.
     conn.execute(
         "DELETE FROM connection_history WHERE id NOT IN (
             SELECT MAX(id) FROM connection_history GROUP BY host, port, username
@@ -98,10 +82,152 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+// ── Sites ──
+
+pub fn get_sites(conn: &Connection) -> Result<Vec<Site>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, protocol, host, port, username, password, key_path, folder, note FROM sites ORDER BY name",
+    )?;
+    let sites = stmt
+        .query_map([], |row| {
+            let proto_str: String = row.get(2)?;
+            let protocol = protocol_from_str(&proto_str);
+            Ok(Site {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                protocol,
+                host: row.get(3)?,
+                port: row.get(4)?,
+                username: row.get(5)?,
+                password: row.get(6)?,
+                key_path: row.get(7)?,
+                folder: row.get(8)?,
+                note: row.get(9)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(sites)
+}
+
+pub fn save_site(conn: &Connection, site: &Site) -> Result<()> {
+    let proto = protocol_to_str(&site.protocol);
+    conn.execute(
+        "INSERT OR REPLACE INTO sites
+         (id, name, protocol, host, port, username, password, key_path, folder, note)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+        params![
+            site.id,
+            site.name,
+            proto,
+            site.host,
+            site.port,
+            site.username,
+            site.password,
+            site.key_path,
+            site.folder,
+            site.note
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn delete_site(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM sites WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+// ── History ──
+
+pub type HistoryRow = (
+    String,
+    u16,
+    String,
+    String,
+    String,
+    Protocol,
+    Option<String>,
+);
+
+pub fn find_history_conn_id(
+    conn: &Connection,
+    host: &str,
+    port: u16,
+    username: &str,
+) -> Result<Option<String>> {
+    let id: Option<String> = conn
+        .query_row(
+            "SELECT conn_id FROM connection_history WHERE host = ?1 AND port = ?2 AND username = ?3",
+            params![host, port, username],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok(id)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn add_history_entry(
+    conn: &Connection,
+    host: &str,
+    port: u16,
+    username: &str,
+    conn_id: &str,
+    protocol: &Protocol,
+    key_path: Option<&str>,
+) -> Result<()> {
+    use chrono::Local;
+    let connected_at = Local::now().format("%H:%M %d.%m").to_string();
+    let proto = protocol_to_str(protocol);
+    conn.execute(
+        "INSERT INTO connection_history (host, port, username, connected_at, conn_id, protocol, key_path)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(host, port, username) DO UPDATE SET
+            connected_at = excluded.connected_at,
+            protocol = excluded.protocol,
+            key_path = excluded.key_path,
+            conn_id = COALESCE(connection_history.conn_id, excluded.conn_id)",
+        params![host, port, username, connected_at, conn_id, proto, key_path],
+    )?;
+    conn.execute(
+        "DELETE FROM connection_history WHERE id NOT IN (
+            SELECT id FROM connection_history ORDER BY id DESC LIMIT 20
+        )",
+        [],
+    )?;
+    Ok(())
+}
+
+pub fn clear_history(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM connection_history", [])?;
+    Ok(())
+}
+
+pub fn get_history(conn: &Connection) -> Result<Vec<HistoryRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT host, port, username, connected_at, conn_id, protocol, key_path
+         FROM connection_history ORDER BY id DESC LIMIT 20",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            let proto_str: String = row.get(5)?;
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                protocol_from_str(&proto_str),
+                row.get(6)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::site::Site;
 
     fn test_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
@@ -204,51 +330,8 @@ mod tests {
         let protocol = Protocol::Sftp;
         add_history_entry(&conn, "example.com", 22, "admin", "conn-1", &protocol, None).unwrap();
         add_history_entry(&conn, "example.com", 22, "admin", "conn-2", &protocol, None).unwrap();
-        // same target keeps only the latest; conn_id preserved from first insert
         let history = get_history(&conn).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].4, "conn-1");
-    }
-
-    #[test]
-    fn test_add_get_remove_bookmark() {
-        let conn = test_db();
-        let id = add_bookmark(&conn, "Projects", "/home/user/projects").unwrap();
-        assert!(id > 0);
-
-        let bookmarks = get_bookmarks(&conn).unwrap();
-        assert_eq!(bookmarks.len(), 1);
-        assert_eq!(bookmarks[0].1, "Projects");
-        assert_eq!(bookmarks[0].2, "/home/user/projects");
-
-        remove_bookmark(&conn, id).unwrap();
-        assert!(get_bookmarks(&conn).unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_settings_string() {
-        let conn = test_db();
-        assert!(get_setting(&conn, "theme").is_none());
-        set_setting(&conn, "theme", "dark").unwrap();
-        assert_eq!(get_setting(&conn, "theme").unwrap(), "dark");
-        set_setting(&conn, "theme", "light").unwrap();
-        assert_eq!(get_setting(&conn, "theme").unwrap(), "light");
-    }
-
-    #[test]
-    fn test_settings_bool() {
-        let conn = test_db();
-        assert!(!get_bool(&conn, "show_hidden", false));
-        assert!(get_bool(&conn, "show_hidden", true));
-        set_bool(&conn, "show_hidden", true);
-        assert!(get_bool(&conn, "show_hidden", false));
-    }
-
-    #[test]
-    fn test_settings_u32() {
-        let conn = test_db();
-        assert_eq!(get_u32(&conn, "timeout", 30), 30);
-        set_u32(&conn, "timeout", 60);
-        assert_eq!(get_u32(&conn, "timeout", 30), 60);
     }
 }

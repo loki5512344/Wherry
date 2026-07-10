@@ -1,14 +1,16 @@
 //! Integration-level smoke tests: verify module imports and command function
 //! signatures compile correctly. Does not exercise Tauri runtime.
-use wherry_lib::domain::connection::{ConnectionParams, Protocol};
-use wherry_lib::domain::error::AppError;
-use wherry_lib::domain::file_entry::{EntryKind, FileEntry};
-use wherry_lib::domain::site::Site;
-use wherry_lib::domain::transfer::{TaskState, TransferKind, TransferTask};
-use wherry_lib::storage::db::{
-    add_bookmark, add_history_entry, clear_history, delete_site, find_history_conn_id,
-    get_bookmarks, get_bool, get_history, get_setting, get_sites, get_u32, init_tables,
-    remove_bookmark, save_site, set_bool, set_setting, set_u32, HistoryRow,
+use wherry_lib::domain::{
+    ConnectionParams, EntryKind, FileEntry, Protocol, Site, TaskState, TransferKind, TransferTask,
+};
+use wherry_lib::error::AppError;
+use wherry_lib::settings::{
+    add_bookmark, get_bookmarks, get_bool, get_setting, get_u32, remove_bookmark, set_bool,
+    set_setting, set_u32,
+};
+use wherry_lib::storage::{
+    HistoryRow, add_history_entry, clear_history, delete_site, find_history_conn_id, get_history,
+    get_sites, init_tables, save_site,
 };
 
 #[test]

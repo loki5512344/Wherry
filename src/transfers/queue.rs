@@ -1,6 +1,24 @@
-use crate::domain::transfer::{TaskState, TransferTask};
+use crate::domain::{TaskState, TransferKind, TransferTask};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+
+pub fn new_task(
+    kind: TransferKind,
+    connection_id: impl Into<String>,
+    local_path: impl Into<String>,
+    remote_path: impl Into<String>,
+    file_name: impl Into<String>,
+    total_bytes: u64,
+) -> TransferTask {
+    TransferTask::new(
+        kind,
+        connection_id.into(),
+        local_path.into(),
+        remote_path.into(),
+        file_name.into(),
+        total_bytes,
+    )
+}
 
 #[derive(Clone, Default)]
 pub struct TransferQueue {
@@ -55,7 +73,7 @@ impl TransferQueue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::transfer::{TaskState, TransferKind, TransferTask};
+    use crate::domain::{TaskState, TransferKind, TransferTask};
 
     fn make_task(id: &str, total: u64) -> TransferTask {
         TransferTask {

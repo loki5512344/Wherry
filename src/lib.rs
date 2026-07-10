@@ -1,15 +1,18 @@
 pub mod commands;
 pub mod domain;
+pub mod error;
 pub mod fs;
 pub mod i18n;
 pub mod protocols;
+pub mod settings;
 pub mod storage;
-pub mod transfer;
+pub mod transfers;
+pub mod window;
 
 use crate::commands::AppState;
-use crate::domain::window_state::WindowState;
 use crate::fs::remote::RemoteRegistry;
-use crate::transfer::queue::TransferQueue;
+use crate::transfers::queue::TransferQueue;
+use crate::window::WindowState;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 use tauri::Manager;
@@ -27,12 +30,12 @@ pub fn run() {
         std::fs::create_dir_all(parent).ok();
     }
     let conn = rusqlite::Connection::open(&db_path).expect("failed to open wherry database");
-    storage::db::init_tables(&conn).expect("failed to init db tables");
+    storage::init_tables(&conn).expect("failed to init db tables");
     let db = Arc::new(std::sync::Mutex::new(conn));
 
     let max_concurrent = {
         let c = db.lock().unwrap();
-        Arc::new(AtomicU32::new(storage::db::get_u32(
+        Arc::new(AtomicU32::new(settings::get_u32(
             &c,
             "max_concurrent_transfers",
             DEFAULT_MAX_CONCURRENT,
@@ -41,7 +44,7 @@ pub fn run() {
 
     let auto_clear_secs = {
         let c = db.lock().unwrap();
-        Arc::new(AtomicU32::new(storage::db::get_u32(
+        Arc::new(AtomicU32::new(settings::get_u32(
             &c,
             "auto_clear_completed_secs",
             0,
@@ -62,7 +65,7 @@ pub fn run() {
         })
         .setup(move |app| {
             let handle = app.handle().clone();
-            transfer::worker::spawn_worker(
+            transfers::worker::spawn_worker(
                 queue.clone(),
                 registry.clone(),
                 tauri::async_runtime::handle().inner().clone(),
@@ -78,16 +81,14 @@ pub fn run() {
                 let label = window.label().to_string();
                 let key = format!("window_state_{}", label);
                 if let Ok(conn) = db.lock()
-                    && let Some(json) = storage::db::get_setting(&conn, &key)
+                    && let Some(json) = settings::get_setting(&conn, &key)
                     && let Ok(ws) = serde_json::from_str::<WindowState>(&json)
                 {
                     drop(conn);
                     if let (Some(x), Some(y)) = (ws.x, ws.y) {
-                        let _ = window
-                            .set_position(tauri::PhysicalPosition::new(x, y));
+                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
                     }
-                    let _ = window
-                        .set_size(tauri::PhysicalSize::new(ws.width, ws.height));
+                    let _ = window.set_size(tauri::PhysicalSize::new(ws.width, ws.height));
                     if ws.maximized {
                         let _ = window.maximize();
                     }
