@@ -11,12 +11,12 @@ pkgbase = wherry
 	makedepends = patchelf
 	depends = webkit2gtk-4.1
 	depends = gtk3
-	depends = libsoup-3.0
+	depends = libsoup3
 	depends = librsvg
 	depends = libappindicator-gtk3
-	depends = libdbus-1
+	depends = dbus
 	depends = openssl
-	source = wherry-0.1.0.tar.gz::https://github.com/loki5512344/Wherry/archive/refs/tags/v0.1.0.tar.gz
+	source = https://github.com/loki5512344/Wherry/archive/refs/tags/v0.1.0.tar.gz
 	sha256sums = SKIP
 
 pkgname = wherry

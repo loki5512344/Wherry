@@ -11,10 +11,10 @@ license=('GPL3')
 depends=(
   'webkit2gtk-4.1'
   'gtk3'
-  'libsoup-3.0'
+  'libsoup3'
   'librsvg'
   'libappindicator-gtk3'
-  'libdbus-1'
+  'dbus'
   'openssl'
 )
 makedepends=(
@@ -22,22 +22,24 @@ makedepends=(
   'rust'
   'patchelf'
 )
-source=("$pkgname-$pkgver.tar.gz::https://github.com/loki5512344/Wherry/archive/refs/tags/v$pkgver.tar.gz")
+source=("https://github.com/loki5512344/Wherry/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
+_repodir="Wherry-$pkgver"
+
 prepare() {
-  cd "$srcdir/$pkgname-$pkgver/src"
+  cd "$srcdir/$_repodir/src"
 }
 
 build() {
-  cd "$srcdir/$pkgname-$pkgver/src"
+  cd "$srcdir/$_repodir/src"
   export CARGO_TARGET_DIR="$srcdir/target"
-  cargo build --release --frozen
+  cargo build --release
 }
 
 package() {
-  cd "$srcdir/$pkgname-$pkgver/src"
+  cd "$srcdir/$_repodir/src"
   install -Dm755 target/release/wherry "$pkgdir/usr/bin/wherry"
   install -Dm644 icons/128x128.png "$pkgdir/usr/share/pixmaps/wherry.png"
-  install -Dm644 dist/wherry.desktop "$pkgdir/usr/share/applications/wherry.desktop"
+  install -Dm644 "$srcdir/$_repodir/dist/wherry.desktop" "$pkgdir/usr/share/applications/wherry.desktop"
 }

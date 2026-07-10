@@ -4,6 +4,7 @@ dist/*.zip
 dist/*.deb
 dist/*.rpm
 dist/pkg/
+dist/src/
 target/
 .tauri/
 src/target/
