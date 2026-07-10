@@ -8,6 +8,11 @@
 
 FTP/SFTP клиент на Tauri 2: бэкенд на Rust, фронтенд — vanilla HTML/CSS/JS.
 
+<p align="center">
+  <img src="docs/img/start_screen.png" alt="Wherry main screen" width="80%" style="max-width:800px;border-radius:10px">
+  <br><em>Welcome-экран с сохранёнными сайтами и историей подключений</em>
+</p>
+
 ## Стек
 
 - **Tauri 2** — нативная оболочка (Rust-бэкенд + WebView-фронтенд)
@@ -23,7 +28,15 @@ FTP/SFTP клиент на Tauri 2: бэкенд на Rust, фронтенд —
 |----------|--------------|
 | SFTP     | реализован   |
 | FTP      | реализован   |
-| FTPS     | заглушка     |
+| FTPS     | реализован   |
+
+## Скриншоты
+
+<p align="center">
+  <img src="docs/img/connect_screen.png" alt="Connect dialog" height="400" style="border-radius:10px;margin-right:12px">
+  <img src="docs/img/settings_screen.png" alt="Settings screen" height="400" style="border-radius:10px">
+  <br><em>Диалог подключения (слева) и окно настроек (справа)</em>
+</p>
 
 ## Возможности
 
@@ -33,8 +46,6 @@ FTP/SFTP клиент на Tauri 2: бэкенд на Rust, фронтенд —
 - Drag & drop, горячие клавиши (Cmd/Ctrl в зависимости от платформы)
 - Welcome-экран: сохранённые сайты, недавние подключения, шорткаты
 - Settings: General / Appearance / Connections / History / Security / Transfers / About
-
-В разработке: полноценная реализация FTPS, Site Manager UI (создание/редактирование сайтов).
 
 ## Разработка
 

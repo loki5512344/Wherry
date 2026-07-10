@@ -39,8 +39,18 @@ pub const ENTRIES: &[Entry] = &[
     (
         "dialogs.browse",
         [
-            "Browse…", "Обзор…", "Examinar…", "Parcourir…", "Durchsuchen…", "Sfoglia…",
-            "Procurar…", "Przeglądaj…", "浏览…", "参照…", "찾아보기…", "Gözat…",
+            "Browse…",
+            "Обзор…",
+            "Examinar…",
+            "Parcourir…",
+            "Durchsuchen…",
+            "Sfoglia…",
+            "Procurar…",
+            "Przeglądaj…",
+            "浏览…",
+            "参照…",
+            "찾아보기…",
+            "Gözat…",
         ],
     ),
     (

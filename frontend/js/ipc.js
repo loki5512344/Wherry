@@ -85,6 +85,7 @@ export const setPref = (key, value) => invoke("set_pref", { key, value });
 export const deletePassword = (siteId) => invoke("delete_password", { siteId });
 export const appDataDir = () => invoke("app_data_dir");
 export const platformInfo = () => invoke("platform_info");
+export const newWindow = () => invoke("new_window");
 
 // --- Events -------------------------------------------------------------------
 // Payloads here are snake_case on the wire (worker.rs's ProgressPayload/

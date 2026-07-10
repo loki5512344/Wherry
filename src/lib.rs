@@ -7,10 +7,12 @@ pub mod storage;
 pub mod transfer;
 
 use crate::commands::AppState;
+use crate::domain::window_state::WindowState;
 use crate::fs::remote::RemoteRegistry;
 use crate::transfer::queue::TransferQueue;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
+use tauri::Manager;
 
 const DEFAULT_MAX_CONCURRENT: u32 = 2;
 
@@ -37,6 +39,15 @@ pub fn run() {
         )))
     };
 
+    let auto_clear_secs = {
+        let c = db.lock().unwrap();
+        Arc::new(AtomicU32::new(storage::db::get_u32(
+            &c,
+            "auto_clear_completed_secs",
+            0,
+        )))
+    };
+
     let registry = Arc::new(RemoteRegistry::default());
     let queue = TransferQueue::default();
 
@@ -47,15 +58,54 @@ pub fn run() {
             registry: registry.clone(),
             queue: queue.clone(),
             max_concurrent: max_concurrent.clone(),
+            auto_clear_secs: auto_clear_secs.clone(),
         })
         .setup(move |app| {
+            let handle = app.handle().clone();
             transfer::worker::spawn_worker(
                 queue.clone(),
                 registry.clone(),
                 tauri::async_runtime::handle().inner().clone(),
                 max_concurrent.clone(),
-                app.handle().clone(),
+                auto_clear_secs.clone(),
+                handle.clone(),
             );
+
+            // Restore main window geometry from saved state
+            if let Some(window) = handle.get_webview_window("main") {
+                let db = handle.state::<AppState>().db.clone();
+
+                let label = window.label().to_string();
+                let key = format!("window_state_{}", label);
+                if let Ok(conn) = db.lock()
+                    && let Some(json) = storage::db::get_setting(&conn, &key)
+                    && let Ok(ws) = serde_json::from_str::<WindowState>(&json)
+                {
+                    drop(conn);
+                    if let (Some(x), Some(y)) = (ws.x, ws.y) {
+                        let _ = window
+                            .set_position(tauri::PhysicalPosition::new(x, y));
+                    }
+                    let _ = window
+                        .set_size(tauri::PhysicalSize::new(ws.width, ws.height));
+                    if ws.maximized {
+                        let _ = window.maximize();
+                    }
+                }
+
+                // Save geometry on close
+                let db2 = db.clone();
+                let handle2 = handle.clone();
+                let label2 = label.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api: _, .. } = event
+                        && let Some(win) = handle2.get_webview_window(&label2)
+                    {
+                        commands::save_window_state_internal(&win, &db2);
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -94,6 +144,9 @@ pub fn run() {
             commands::delete_password,
             commands::app_data_dir,
             commands::platform_info,
+            commands::save_window_state,
+            commands::load_window_state,
+            commands::new_window,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Wherry");

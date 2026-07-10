@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio::time::sleep;
@@ -69,9 +71,12 @@ pub fn spawn_worker(
     registry: Arc<RemoteRegistry>,
     rt_handle: tokio::runtime::Handle,
     max_concurrent: Arc<AtomicU32>,
+    auto_clear_secs: Arc<AtomicU32>,
     app: AppHandle,
 ) {
     let in_flight = Arc::new(AtomicUsize::new(0));
+    let completed_at: Arc<Mutex<HashMap<String, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
+    let completed_at_clone = completed_at.clone();
     rt_handle.spawn(async move {
         loop {
             let limit = max_concurrent.load(Ordering::Relaxed).max(1) as usize;
@@ -91,11 +96,27 @@ pub fn spawn_worker(
                 let registry = registry.clone();
                 let guard_counter = in_flight.clone();
                 let app = app.clone();
+                let completed_at = completed_at.clone();
                 tokio::spawn(async move {
                     let _guard = InFlightGuard(guard_counter);
-                    run_transfer(task, queue, registry, app).await;
+                    run_transfer(task, queue, registry, app, completed_at).await;
                 });
             }
+
+            let clear_after = auto_clear_secs.load(Ordering::Relaxed);
+            if clear_after > 0 {
+                let mut completed = completed_at_clone.lock().unwrap();
+                let now = Instant::now();
+                completed.retain(|id, completion_time| {
+                    if now.duration_since(*completion_time).as_secs() >= clear_after as u64 {
+                        queue.remove(id);
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+
             sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
         }
     });
@@ -107,6 +128,7 @@ async fn run_transfer(
     queue: TransferQueue,
     registry: Arc<RemoteRegistry>,
     app: AppHandle,
+    completed_at: Arc<Mutex<HashMap<String, Instant>>>,
 ) {
     let fs = match registry.get(&task.connection_id) {
         Some(fs) => fs,
@@ -153,7 +175,11 @@ async fn run_transfer(
             };
             if throttle.lock().unwrap().should_emit() {
                 queue_for_progress.update_progress(&task_id_for_progress, transferred, speed);
-                emit_progress(&app_for_progress, &queue_for_progress, &task_id_for_progress);
+                emit_progress(
+                    &app_for_progress,
+                    &queue_for_progress,
+                    &task_id_for_progress,
+                );
             }
             ProgressAction::Continue
         }));
@@ -173,6 +199,7 @@ async fn run_transfer(
         Ok(()) => {
             queue.update_state(&task.id, TaskState::Completed);
             queue.update_progress(&task.id, task.total_bytes, 0);
+            completed_at.lock().unwrap().insert(task.id.clone(), Instant::now());
             emit_progress(&app, &queue, &task.id);
             emit_state(&app, &task.id, TaskState::Completed);
         }

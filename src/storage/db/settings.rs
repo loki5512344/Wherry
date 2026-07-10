@@ -2,7 +2,7 @@
 //! диалогом Settings для того, что должно переживать перезапуск (в отличие
 //! от видимости панелей, которая остаётся только на время сессии).
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 pub fn get_setting(conn: &Connection, key: &str) -> Option<String> {
     conn.query_row(

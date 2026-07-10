@@ -1,6 +1,7 @@
 import { state, notify, activeTab } from "../store.js";
 import { t } from "../i18n.js";
 import { iconMarkup } from "../icons.js";
+import * as ipc from "../ipc.js";
 import { openNew } from "./connectDialog.js";
 import { toggle as toggleHistory } from "./historyPopup.js";
 import { openMkdir, openDelete, openRename } from "./opDialogs.js";
@@ -49,6 +50,7 @@ export function renderToolbar(container) {
     <button type="button" class="btn icon-btn btn-ghost" data-action="new-folder" title="${t("common.newFolder")} (${shortcutLabel("N", { shift: true })})" ${state.activePane === "remote" && !connected ? "disabled" : ""}>${iconMarkup("folderAdd", 16)}</button>
     <button type="button" class="btn icon-btn btn-ghost" data-action="delete" title="${t("common.delete")} (${isMac ? "⌘⌫" : "Del"})" ${currentSelection().length > 0 ? "" : "disabled"}>${iconMarkup("trash", 16)}</button>
     <button type="button" class="btn icon-btn btn-ghost" data-action="rename" title="${t("common.rename")} (${isMac ? "⏎" : "F2"})" ${currentSelection().length === 1 ? "" : "disabled"}>${iconMarkup("pen", 16)}</button>
+    <button type="button" class="btn icon-btn btn-ghost" data-action="new-window" title="New Window">${iconMarkup("copy", 15)}</button>
     <div class="toolbar-spacer"></div>
     <button type="button" class="btn icon-btn btn-ghost" data-action="settings" title="${t("common.settings")} (${shortcutLabel(",")})">${iconMarkup("settings", 16)}</button>
     <button type="button" class="btn icon-btn btn-toggle ${state.showHistoryPopup ? "active" : ""}" data-action="history" data-history-toggle title="${t("common.history")}">${iconMarkup("history", 16)}</button>
@@ -89,6 +91,9 @@ export function renderToolbar(container) {
     if (names.length !== 1) return;
     state.opTarget = state.activePane;
     openRename(names[0]);
+  });
+  container.querySelector('[data-action="new-window"]').addEventListener("click", () => {
+    ipc.newWindow();
   });
   container.querySelector('[data-action="history"]').addEventListener("click", (e) => {
     toggleHistory(e.currentTarget);

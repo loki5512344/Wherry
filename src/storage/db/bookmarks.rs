@@ -1,6 +1,6 @@
 //! Таблица закладок локальных папок.
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 pub fn get_bookmarks(conn: &Connection) -> Result<Vec<(i64, String, String)>> {
     let mut stmt = conn.prepare("SELECT id, name, path FROM bookmarks ORDER BY id")?;

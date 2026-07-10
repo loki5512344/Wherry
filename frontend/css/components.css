@@ -414,8 +414,8 @@
   flex: 1;
 }
 .dialog-close {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-sm);
   border: none;
   background: transparent;
@@ -540,6 +540,10 @@
   color: var(--text-primary);
   cursor: pointer;
   min-width: 180px;
+}
+.settings-select option {
+  background: var(--bg-panel);
+  color: var(--text-primary);
 }
 .settings-select:hover {
   border-color: var(--accent);

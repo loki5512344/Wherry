@@ -4,6 +4,7 @@ import { iconMarkup } from "../icons.js";
 import { renderHistoryRows } from "./historyList.js";
 import { openNew } from "./connectDialog.js";
 import { openSettings } from "./settingsDialog.js";
+import { openSiteManagerNew } from "./siteManager.js";
 import { connectFromSite, PROTOCOL_LABELS } from "../connectActions.js";
 import { escapeHtml } from "../dom.js";
 import { shortcutLabel } from "../platform.js";
@@ -31,6 +32,9 @@ export function renderWelcome(container) {
         <div class="welcome-card" data-role="sites" style="display:none">
           <div class="welcome-card-title">${iconMarkup("star", 12)}<span>${t("welcome.savedSites")}</span></div>
           <div data-role="sites-list"></div>
+          <div style="margin-top:6px;text-align:center">
+            <button type="button" class="btn btn-ghost" data-action="manage-sites" style="font-size:11px;height:28px">${t("siteManager.manageSites")}</button>
+          </div>
         </div>
         <div class="welcome-card" data-role="recent" style="display:none">
           <div class="welcome-card-title">${iconMarkup("history", 12)}<span>${t("welcome.recentConnections")}</span></div>
@@ -42,6 +46,7 @@ export function renderWelcome(container) {
 
   container.querySelector('[data-action="new-connection"]').addEventListener("click", openNew);
   container.querySelector('[data-action="open-settings"]').addEventListener("click", openSettings);
+  container.querySelector('[data-action="manage-sites"]')?.addEventListener("click", openSiteManagerNew);
 
   updateWelcome(container);
 }

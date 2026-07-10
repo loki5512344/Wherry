@@ -33,3 +33,38 @@ impl ProgressThrottle {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_first_call_emits() {
+        let mut throttle = ProgressThrottle::default();
+        assert!(throttle.should_emit());
+    }
+
+    #[test]
+    fn test_too_soon_does_not_emit() {
+        let mut throttle = ProgressThrottle::default();
+        throttle.should_emit();
+        assert!(!throttle.should_emit());
+    }
+
+    #[test]
+    fn test_force_resets() {
+        let mut throttle = ProgressThrottle::default();
+        throttle.should_emit();
+        assert!(throttle.force());
+        assert!(throttle.should_emit());
+    }
+
+    #[test]
+    fn test_interval_elapsed_emits() {
+        let mut throttle = ProgressThrottle {
+            last_emit: Instant::now() - Duration::from_millis(200),
+            interval: Duration::from_millis(100),
+        };
+        assert!(throttle.should_emit());
+    }
+}

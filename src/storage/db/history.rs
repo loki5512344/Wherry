@@ -1,6 +1,6 @@
 //! Таблица истории подключений (последние 20 целей, уникальных по host/port/user).
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 use super::{protocol_from_str, protocol_to_str};
 use crate::domain::connection::Protocol;

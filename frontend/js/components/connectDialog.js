@@ -94,7 +94,7 @@ function build() {
     <div class="dialog-header">
       <span class="icon icon--important">${iconMarkup("serverSquare", 16)}</span>
       <span class="dialog-title">${t("connect.title")}</span>
-      <button type="button" class="dialog-close" data-action="close">${iconMarkup("close", 13)}</button>
+      <button type="button" class="dialog-close" data-action="close">${iconMarkup("close", 16)}</button>
     </div>
     <div class="dialog-body">
       <div class="segmented" data-role="protocol">

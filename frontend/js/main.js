@@ -15,6 +15,7 @@ import { renderConnectDialog } from "./components/connectDialog.js";
 import { renderHistoryPopup } from "./components/historyPopup.js";
 import { renderOpDialogs, closeDialog } from "./components/opDialogs.js";
 import { renderSettingsDialog } from "./components/settingsDialog.js";
+import { renderSiteManager } from "./components/siteManager.js";
 
 const root = document.getElementById("screen-root");
 
@@ -104,6 +105,7 @@ function render() {
   renderHistoryPopup();
   renderOpDialogs();
   renderSettingsDialog();
+  renderSiteManager();
 }
 
 // Settings → Appearance toggles — animated via CSS transitions.
@@ -129,6 +131,9 @@ window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (state.dialog) {
     closeDialog();
+  } else if (state.showSiteManager) {
+    state.showSiteManager = false;
+    notify();
   } else if (state.showConnectDialog && !state.connectLoading) {
     state.showConnectDialog = false;
     notify();

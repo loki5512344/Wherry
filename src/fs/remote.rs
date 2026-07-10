@@ -23,3 +23,81 @@ impl RemoteRegistry {
         self.connections.lock().unwrap().remove(id);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::file_entry::{EntryKind, FileEntry};
+    use crate::protocols::ProgressAction;
+
+    struct MockFs;
+
+    #[async_trait::async_trait]
+    impl RemoteFs for MockFs {
+        async fn list(&self, _path: &str) -> anyhow::Result<Vec<FileEntry>> {
+            Ok(vec![])
+        }
+        async fn upload_with_progress(
+            &self,
+            _local: &str,
+            _remote: &str,
+            _on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn download_with_progress(
+            &self,
+            _remote: &str,
+            _local: &str,
+            _on_progress: Option<Box<dyn Fn(u64) -> ProgressAction + Send>>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn mkdir(&self, _path: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn rename(&self, _from: &str, _to: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn delete(&self, _path: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn stat(&self, _path: &str) -> anyhow::Result<FileEntry> {
+            Ok(FileEntry {
+                name: "test".into(),
+                path: "/test".into(),
+                kind: EntryKind::File,
+                size: None,
+                modified: None,
+                permissions: None,
+            })
+        }
+    }
+
+    #[test]
+    fn test_insert_get_remove() {
+        let registry = RemoteRegistry::default();
+        let mock = Arc::new(MockFs);
+
+        registry.insert("conn-1".into(), mock.clone());
+        assert!(registry.get("conn-1").is_some());
+
+        registry.remove("conn-1");
+        assert!(registry.get("conn-1").is_none());
+    }
+
+    #[test]
+    fn test_get_nonexistent() {
+        let registry = RemoteRegistry::default();
+        assert!(registry.get("unknown").is_none());
+    }
+
+    #[test]
+    fn test_insert_multiple() {
+        let registry = RemoteRegistry::default();
+        registry.insert("a".into(), Arc::new(MockFs));
+        registry.insert("b".into(), Arc::new(MockFs));
+        assert!(registry.get("a").is_some());
+        assert!(registry.get("b").is_some());
+    }
+}

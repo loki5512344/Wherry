@@ -66,6 +66,7 @@ export const state = {
   dialog: null, // { kind: 'mkdir'|'rename'|'delete', ... }
 
   showSettingsDialog: false,
+  showSiteManager: false,
   // Persisted (via get_pref/set_pref) + session-only (panel visibility)
   // preferences -- see js/components/settingsDialog.js.
   settings: {

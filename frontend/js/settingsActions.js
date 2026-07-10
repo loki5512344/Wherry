@@ -43,11 +43,14 @@ export async function loadSettings() {
 const themeTransitionMs = 300;
 let themeTimeout = null;
 
+const DARK_THEMES = new Set(["ember", "midnight", "forest", "ash"]);
+
 export function applyTheme(themeId) {
   const html = document.documentElement;
   // Add a class to enable CSS transitions during theme switch
   html.classList.add("theme-transitioning");
   html.setAttribute("data-theme", themeId);
+  html.style.colorScheme = DARK_THEMES.has(themeId) ? "dark" : "light";
   clearTimeout(themeTimeout);
   themeTimeout = setTimeout(() => {
     html.classList.remove("theme-transitioning");

@@ -1,12 +1,14 @@
-// Reusable file listing table shared by the Local and Remote panes — mirrors
-// the old src/ui/panels/file_pane module (table.rs/row.rs/sort.rs collapsed
-// into one file since there's no split-module pressure in JS).
 import { t } from "../i18n.js";
 import { iconMarkup, fileIconFor } from "../icons.js";
 import { formatSize, formatTime } from "../format.js";
 import { makeDraggable, makeDropTarget } from "../dnd.js";
 import { showContextMenu } from "./contextMenu.js";
 import { escapeHtml } from "../dom.js";
+
+const ROW_HEIGHT = 32;
+const OVERSCAN = 10;
+
+let rafId = null;
 
 function sortEntries(entries, sort) {
   const dotdotIdx = entries.findIndex((e) => e.name === "..");
@@ -57,29 +59,64 @@ function sortHeaderHtml(label, col, sort) {
   return `<button type="button" class="sort-header ${active ? "active" : ""}" data-col="${col}">${label}${arrow}</button>`;
 }
 
-/**
- * opts:
- *  - entries: FileEntry[]
- *  - selected: string[]      (names of selected entries)
- *  - anchor: string|null     (name shift-click range selection extends from)
- *  - sort: { col, dir }
- *  - onSort(nextSort)
- *  - onSelect(names, anchor)
- *  - onOpen(name)
- *  - dragPayload(entry) => payload|null
- *  - onDropOnEntry(entry, payload)   only called for dir/".." rows
- *  - onHoverOpen(entry)   spring-loaded open: fires after a drag lingers on
- *                         a dir/".." row for HOVER_OPEN_DELAY, without
- *                         ending the drag -- only called for dir/".." rows
- *  - contextMenuItems(entry, selectedEntries) => menu items for showContextMenu, or null to skip
- */
-export function renderFileTable(container, opts) {
-  const scrollPos = container.querySelector(".file-table-body")?.scrollTop ?? 0;
+function computeVisibleRange(scrollTop, viewportHeight, totalItems) {
+  const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const end = Math.min(totalItems, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+  return { start, end };
+}
+
+function getSignature(sorted, sort) {
+  const len = sorted.length;
+  if (len === 0) return `0:${sort.col}:${sort.dir}`;
+  const mid = Math.min(len >> 1, len - 1);
+  return `${len}:${sort.col}:${sort.dir}:${sorted[0].name}:${sorted[mid].name}:${sorted[len - 1].name}`;
+}
+
+function initStructure(container) {
+  let cache = container._fileTableCache;
+  if (cache) return cache;
+
   container.innerHTML = "";
   container.classList.add("file-table-wrap");
 
   const header = document.createElement("div");
   header.className = "file-table-header";
+  container.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "file-table-body";
+  container.appendChild(body);
+
+  const spacer = document.createElement("div");
+  spacer.style.position = "relative";
+  body.appendChild(spacer);
+
+  cache = {
+    header,
+    body,
+    spacer,
+    lastSignature: null,
+    sorted: [],
+    selectableNames: [],
+    opts: null,
+  };
+  container._fileTableCache = cache;
+
+  body.addEventListener("scroll", () => {
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      const c = container._fileTableCache;
+      if (c && c.sorted.length > 0) {
+        updateVisibleRows(c);
+      }
+    });
+  });
+
+  return cache;
+}
+
+function updateHeader(header, opts) {
   header.innerHTML = `
     ${sortHeaderHtml(t("panels.colName"), "name", opts.sort)}
     ${sortHeaderHtml(t("panels.colModified"), "modified", opts.sort)}
@@ -96,81 +133,141 @@ export function renderFileTable(container, opts) {
       opts.onSort(next);
     });
   });
-  container.appendChild(header);
+}
 
-  const body = document.createElement("div");
-  body.className = "file-table-body";
-  container.appendChild(body);
+function createRowElement(entry, index, cache) {
+  const row = document.createElement("div");
+  row.className = "file-row";
+  row.dataset.index = index;
 
-  const sorted = sortEntries(opts.entries, opts.sort);
-  const selectableNames = sorted.filter((e) => e.name !== "..").map((e) => e.name);
+  const current = cache.opts;
+  if (current.selected.includes(entry.name)) row.classList.add("selected");
 
-  for (const entry of sorted) {
-    const row = document.createElement("div");
-    row.className = "file-row";
-    if (opts.selected.includes(entry.name)) row.classList.add("selected");
+  row.style.position = "absolute";
+  row.style.top = index * ROW_HEIGHT + "px";
+  row.style.left = "0";
+  row.style.right = "0";
+  row.style.height = ROW_HEIGHT + "px";
 
-    const [iconName, iconColor] = rowIcon(entry);
-    const nameCol = entry.name === ".." ? "text-hint" : "text-primary";
+  const [iconName, iconColor] = rowIcon(entry);
+  const nameCol = entry.name === ".." ? "text-hint" : "text-primary";
 
-    row.innerHTML = `
-      <div class="file-row-name">
-        <span class="icon ${iconColor}">${iconMarkup(iconName, 15)}</span>
-        <span class="${nameCol}">${escapeHtml(entry.name)}</span>
-      </div>
-      <div class="file-row-modified mono">${formatTime(entry.modified)}</div>
-      <div class="file-row-type">${typeLabel(entry)}</div>
-      <div class="file-row-size mono">${formatSize(entry.size)}</div>
-    `;
+  row.innerHTML = `
+    <div class="file-row-name">
+      <span class="icon ${iconColor}">${iconMarkup(iconName, 15)}</span>
+      <span class="${nameCol}">${escapeHtml(entry.name)}</span>
+    </div>
+    <div class="file-row-modified mono">${formatTime(entry.modified)}</div>
+    <div class="file-row-type">${typeLabel(entry)}</div>
+    <div class="file-row-size mono">${formatSize(entry.size)}</div>
+  `;
 
-    row.addEventListener("click", (e) => {
-      if (entry.name === "..") {
-        opts.onSelect([], null);
-        return;
+  row.addEventListener("click", (e) => {
+    const opts = cache.opts;
+    if (entry.name === "..") {
+      opts.onSelect([], null);
+      return;
+    }
+    const idx = cache.selectableNames.indexOf(entry.name);
+    if (e.shiftKey && opts.anchor && cache.selectableNames.includes(opts.anchor)) {
+      const anchorIdx = cache.selectableNames.indexOf(opts.anchor);
+      const [lo, hi] = anchorIdx < idx ? [anchorIdx, idx] : [idx, anchorIdx];
+      opts.onSelect(cache.selectableNames.slice(lo, hi + 1), opts.anchor);
+    } else if (e.ctrlKey || e.metaKey) {
+      const next = new Set(opts.selected);
+      if (next.has(entry.name)) next.delete(entry.name);
+      else next.add(entry.name);
+      opts.onSelect(cache.selectableNames.filter((n) => next.has(n)), entry.name);
+    } else {
+      opts.onSelect([entry.name], entry.name);
+    }
+  });
+  row.addEventListener("dblclick", () => cache.opts.onOpen(entry.name));
+
+  if (entry.name !== "..") {
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const opts = cache.opts;
+      let selection = opts.selected;
+      if (!selection.includes(entry.name)) {
+        selection = [entry.name];
+        opts.onSelect(selection, entry.name);
       }
-      const idx = selectableNames.indexOf(entry.name);
-      if (e.shiftKey && opts.anchor && selectableNames.includes(opts.anchor)) {
-        const anchorIdx = selectableNames.indexOf(opts.anchor);
-        const [lo, hi] = anchorIdx < idx ? [anchorIdx, idx] : [idx, anchorIdx];
-        opts.onSelect(selectableNames.slice(lo, hi + 1), opts.anchor);
-      } else if (e.ctrlKey || e.metaKey) {
-        const next = new Set(opts.selected);
-        if (next.has(entry.name)) next.delete(entry.name);
-        else next.add(entry.name);
-        opts.onSelect(selectableNames.filter((n) => next.has(n)), entry.name);
-      } else {
-        opts.onSelect([entry.name], entry.name);
-      }
+      const selectedEntries = cache.sorted.filter((en) => selection.includes(en.name));
+      const items = opts.contextMenuItems?.(entry, selectedEntries);
+      if (items) showContextMenu(e.clientX, e.clientY, items);
     });
-    row.addEventListener("dblclick", () => opts.onOpen(entry.name));
 
-    if (entry.name !== "..") {
-      row.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        let selection = opts.selected;
-        if (!selection.includes(entry.name)) {
-          selection = [entry.name];
-          opts.onSelect(selection, entry.name);
-        }
-        const selectedEntries = sorted.filter((en) => selection.includes(en.name));
-        const items = opts.contextMenuItems?.(entry, selectedEntries);
-        if (items) showContextMenu(e.clientX, e.clientY, items);
-      });
-
-      const payload = opts.dragPayload?.(entry);
-      if (payload) makeDraggable(row.querySelector(".file-row-name"), entry, payload);
-    }
-
-    if (entry.kind === "dir" || entry.name === "..") {
-      makeDropTarget(row, {
-        onDrop: (payload) => opts.onDropOnEntry?.(entry, payload),
-        onHoverChange: (hover) => row.classList.toggle("drag-hover", hover),
-        onHoverHold: () => opts.onHoverOpen?.(entry),
-      });
-    }
-
-    body.appendChild(row);
+    const payload = current.dragPayload?.(entry);
+    if (payload) makeDraggable(row.querySelector(".file-row-name"), entry, payload);
   }
 
-  body.scrollTop = scrollPos;
+  if (entry.kind === "dir" || entry.name === "..") {
+    makeDropTarget(row, {
+      onDrop: (payload) => cache.opts.onDropOnEntry?.(entry, payload),
+      onHoverChange: (hover) => row.classList.toggle("drag-hover", hover),
+      onHoverHold: () => cache.opts.onHoverOpen?.(entry),
+    });
+  }
+
+  return row;
+}
+
+function updateVisibleRows(cache) {
+  const sorted = cache.sorted;
+  if (sorted.length === 0) return;
+
+  const { start, end } = computeVisibleRange(
+    cache.body.scrollTop,
+    cache.body.clientHeight,
+    sorted.length,
+  );
+
+  const existing = cache.spacer.querySelectorAll(".file-row");
+  for (const row of existing) {
+    const idx = parseInt(row.dataset.index, 10);
+    if (idx < start || idx >= end) {
+      row.remove();
+    }
+  }
+
+  for (let i = start; i < end; i++) {
+    if (!cache.spacer.querySelector(`.file-row[data-index="${i}"]`)) {
+      const row = createRowElement(sorted[i], i, cache);
+      cache.spacer.appendChild(row);
+    }
+  }
+}
+
+function updateSelection(cache, selected) {
+  const rows = cache.spacer.querySelectorAll(".file-row");
+  for (const row of rows) {
+    const idx = parseInt(row.dataset.index, 10);
+    const entry = cache.sorted[idx];
+    if (entry) {
+      row.classList.toggle("selected", selected.includes(entry.name));
+    }
+  }
+}
+
+export function renderFileTable(container, opts) {
+  const cache = initStructure(container);
+  cache.opts = opts;
+
+  updateHeader(cache.header, opts);
+
+  const sorted = sortEntries(opts.entries, opts.sort);
+  const sig = getSignature(sorted, opts.sort);
+
+  if (sig !== cache.lastSignature) {
+    cache.lastSignature = sig;
+    cache.sorted = sorted;
+    cache.selectableNames = sorted.filter((e) => e.name !== "..").map((e) => e.name);
+    cache.spacer.style.height = sorted.length * ROW_HEIGHT + "px";
+    cache.body.scrollTop = 0;
+    cache.spacer.innerHTML = "";
+    updateVisibleRows(cache);
+  } else {
+    updateSelection(cache, opts.selected);
+  }
 }

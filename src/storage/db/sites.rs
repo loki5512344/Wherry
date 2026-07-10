@@ -1,6 +1,6 @@
 //! Таблица сохранённых серверов (Sites).
 use anyhow::Result;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 use super::{protocol_from_str, protocol_to_str};
 use crate::domain::site::Site;

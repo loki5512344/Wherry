@@ -65,7 +65,7 @@ function createTab(id, label, status, closable) {
     const close = document.createElement("button");
     close.type = "button";
     close.className = "tab-close";
-    close.innerHTML = iconMarkup("close", 10);
+    close.innerHTML = iconMarkup("close", 13);
     close.title = "Close";
     close.addEventListener("click", (e) => {
       e.stopPropagation();

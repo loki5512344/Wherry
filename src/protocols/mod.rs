@@ -1,4 +1,5 @@
 pub mod ftp;
+pub use ftp::FtpsClient;
 pub mod sftp;
 
 use crate::domain::file_entry::FileEntry;

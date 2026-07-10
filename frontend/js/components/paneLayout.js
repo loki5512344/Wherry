@@ -64,7 +64,7 @@ function createPaneCell(pane) {
     const closeBtn = document.createElement("button");
     closeBtn.className = "pane-close-btn";
     closeBtn.title = "Close";
-    closeBtn.innerHTML = iconMarkup("close", 10);
+    closeBtn.innerHTML = iconMarkup("close", 13);
     closeBtn.addEventListener("click", (e) => { e.stopPropagation(); closePane(pane.id); });
     header.appendChild(closeBtn);
   }

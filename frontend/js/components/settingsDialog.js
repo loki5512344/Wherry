@@ -22,6 +22,7 @@ import {
   setLanguage,
   setTheme,
 } from "../settingsActions.js";
+import { openSiteManager } from "./siteManager.js";
 
 const LANG_OPTIONS = [
   ["en", "English"],
@@ -176,6 +177,7 @@ function sectionConnections() {
         <div class="settings-list-row-title">${escapeHtml(s.name)}</div>
         <div class="settings-list-row-sub">${escapeHtml(s.username)}@${escapeHtml(s.host)}:${s.port}</div>
       </div>
+      <button type="button" class="btn icon-btn btn-ghost" data-action="edit-site" data-id="${s.id}" title="${t("siteManager.editSiteHover")}">${iconMarkup("pen", 13)}</button>
       <button type="button" class="btn icon-btn btn-ghost" data-action="delete-site" data-id="${s.id}" title="${t("settings.deleteSiteHover")}">${iconMarkup("trash", 14)}</button>
     </div>`,
     )
@@ -348,7 +350,7 @@ function build() {
     <div class="dialog-header">
       <span class="icon icon--important">${iconMarkup("settings", 16)}</span>
       <span class="dialog-title">${t("settings.title")}</span>
-      <button type="button" class="dialog-close" data-action="close">${iconMarkup("close", 13)}</button>
+      <button type="button" class="dialog-close" data-action="close">${iconMarkup("close", 16)}</button>
     </div>
     <div class="settings-body">
       <div class="settings-nav" data-role="nav"></div>
@@ -408,6 +410,11 @@ function wireContentActions(root) {
     });
   });
 
+  root.querySelectorAll("[data-action='edit-site']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openSiteManager(btn.dataset.id);
+    });
+  });
   root.querySelectorAll("[data-action='delete-site']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await deleteSite(btn.dataset.id);

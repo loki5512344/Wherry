@@ -101,3 +101,117 @@ pub fn move_into(src_path: &str, dest_dir: &str) -> Result<()> {
     fs::rename(src_path, dest)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn test_dir() -> std::path::PathBuf {
+        let n = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("wherry-test-{}-{}", std::process::id(), n));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_list_empty_dir() {
+        let dir = test_dir();
+        let entries = list(&dir.to_string_lossy()).unwrap();
+        assert!(entries.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_mkdir_and_list() {
+        let dir = test_dir();
+        let sub = dir.join("subdir");
+        mkdir(&sub.to_string_lossy()).unwrap();
+
+        let entries = list(&dir.to_string_lossy()).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "subdir");
+        assert_eq!(entries[0].kind, EntryKind::Dir);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_rename_file() {
+        let dir = test_dir();
+        let old = dir.join("old.txt");
+        let new = dir.join("new.txt");
+        std::fs::write(&old, "hello").unwrap();
+
+        rename(&old.to_string_lossy(), &new.to_string_lossy()).unwrap();
+        assert!(!old.exists());
+        assert!(new.exists());
+        assert_eq!(std::fs::read_to_string(&new).unwrap(), "hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_delete_file() {
+        let dir = test_dir();
+        let file = dir.join("delete_me.txt");
+        std::fs::write(&file, "content").unwrap();
+
+        delete(&file.to_string_lossy()).unwrap();
+        assert!(!file.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_delete_dir() {
+        let dir = test_dir();
+        let sub = dir.join("subdir");
+        std::fs::create_dir(&sub).unwrap();
+
+        delete(&sub.to_string_lossy()).unwrap();
+        assert!(!sub.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_home_dir() {
+        let home = home_dir();
+        assert!(!home.is_empty());
+    }
+
+    #[test]
+    fn test_move_into() {
+        let dir = test_dir();
+        let src = dir.join("source.txt");
+        let dest_dir = dir.join("dest");
+        std::fs::create_dir(&dest_dir).unwrap();
+        std::fs::write(&src, "move me").unwrap();
+
+        move_into(&src.to_string_lossy(), &dest_dir.to_string_lossy()).unwrap();
+        assert!(!src.exists());
+        assert!(dest_dir.join("source.txt").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_list_sorting() {
+        let dir = test_dir();
+        std::fs::write(dir.join("a.txt"), "").unwrap();
+        std::fs::create_dir(dir.join("b_dir")).unwrap();
+        std::fs::write(dir.join("c.txt"), "").unwrap();
+
+        let entries = list(&dir.to_string_lossy()).unwrap();
+        // dirs first, then files alphabetically
+        assert_eq!(entries[0].name, "b_dir");
+        assert_eq!(entries[0].kind, EntryKind::Dir);
+        assert_eq!(entries[1].name, "a.txt");
+        assert_eq!(entries[2].name, "c.txt");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
