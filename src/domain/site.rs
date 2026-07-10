@@ -10,6 +10,7 @@ pub struct Site {
     pub host: String,
     pub port: u16,
     pub username: String,
+    pub password: Option<String>,
     pub key_path: Option<String>,
     pub folder: Option<String>,
     pub note: Option<String>,

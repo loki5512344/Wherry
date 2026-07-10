@@ -7,7 +7,7 @@ use crate::domain::site::Site;
 
 pub fn get_sites(conn: &Connection) -> Result<Vec<Site>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, protocol, host, port, username, key_path, folder, note FROM sites ORDER BY name",
+        "SELECT id, name, protocol, host, port, username, password, key_path, folder, note FROM sites ORDER BY name",
     )?;
     let sites = stmt
         .query_map([], |row| {
@@ -20,9 +20,10 @@ pub fn get_sites(conn: &Connection) -> Result<Vec<Site>> {
                 host: row.get(3)?,
                 port: row.get(4)?,
                 username: row.get(5)?,
-                key_path: row.get(6)?,
-                folder: row.get(7)?,
-                note: row.get(8)?,
+                password: row.get(6)?,
+                key_path: row.get(7)?,
+                folder: row.get(8)?,
+                note: row.get(9)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -34,8 +35,8 @@ pub fn save_site(conn: &Connection, site: &Site) -> Result<()> {
     let proto = protocol_to_str(&site.protocol);
     conn.execute(
         "INSERT OR REPLACE INTO sites
-         (id, name, protocol, host, port, username, key_path, folder, note)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+         (id, name, protocol, host, port, username, password, key_path, folder, note)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         params![
             site.id,
             site.name,
@@ -43,6 +44,7 @@ pub fn save_site(conn: &Connection, site: &Site) -> Result<()> {
             site.host,
             site.port,
             site.username,
+            site.password,
             site.key_path,
             site.folder,
             site.note

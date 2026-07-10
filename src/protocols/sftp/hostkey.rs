@@ -49,7 +49,7 @@ pub(super) fn verify_host_key(session: &Session, host: &str, port: u16) -> Resul
                 fingerprint_hex(session)
             );
             known
-                .add(host, key, "loflum", key_type.into())
+                .add(host, key, "wherry", key_type.into())
                 .context("failed to add host key to known_hosts")?;
             if let Some(ref path) = known_hosts_path()
                 && let Err(e) = known.write_file(path, KnownHostFileKind::OpenSSH)

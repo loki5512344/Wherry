@@ -1,4 +1,4 @@
-# LoFlum
+# Wherry
 
 ![Rust](https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white)
 ![egui](https://img.shields.io/badge/egui-FF5733?style=flat-square&logo=egui&logoColor=white)

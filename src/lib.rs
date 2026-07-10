@@ -1,86 +1,100 @@
+pub mod commands;
 pub mod domain;
 pub mod fs;
 pub mod i18n;
 pub mod protocols;
 pub mod storage;
 pub mod transfer;
-pub mod ui;
 
+use crate::commands::AppState;
 use crate::fs::remote::RemoteRegistry;
 use crate::transfer::queue::TransferQueue;
-use crate::ui::app::FileManagerApp;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
+
+const DEFAULT_MAX_CONCURRENT: u32 = 2;
 
 pub fn run() {
     tracing_subscriber::fmt().with_target(false).init();
 
     let db_path = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("loflum")
-        .join("loflum.db");
+        .join("wherry")
+        .join("wherry.db");
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    let conn = rusqlite::Connection::open(&db_path).expect("failed to open loflum database");
+    let conn = rusqlite::Connection::open(&db_path).expect("failed to open wherry database");
     storage::db::init_tables(&conn).expect("failed to init db tables");
     let db = Arc::new(std::sync::Mutex::new(conn));
 
-    let sites = {
+    let max_concurrent = {
         let c = db.lock().unwrap();
-        storage::db::get_sites(&c).unwrap_or_default()
+        Arc::new(AtomicU32::new(storage::db::get_u32(
+            &c,
+            "max_concurrent_transfers",
+            DEFAULT_MAX_CONCURRENT,
+        )))
     };
-
-    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-    let rt_handle = rt.handle().clone();
 
     let registry = Arc::new(RemoteRegistry::default());
     let queue = TransferQueue::default();
 
-    // Реальное значение подтягивается из БД внутри FileManagerApp::new —
-    // здесь только общий на воркер и UI атомик, который Settings → Transfers
-    // меняет на лету.
-    let max_concurrent = Arc::new(AtomicU32::new(2));
-    transfer::worker::spawn_worker(
-        queue.clone(),
-        registry.clone(),
-        rt_handle,
-        max_concurrent.clone(),
-    );
-
-    let app = FileManagerApp::new(registry, queue, rt, db, sites, max_concurrent);
-
-    let icon = load_app_icon();
-
-    let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("LoFlum")
-            .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([900.0, 600.0])
-            .with_icon(icon),
-        ..Default::default()
-    };
-
-    eframe::run_native(
-        "LoFlum",
-        native_options,
-        Box::new(|_cc| {
-            crate::ui::menu::setup_native_menu();
-            Ok(Box::new(app))
-        }),
-    )
-    .expect("failed to start LoFlum");
-}
-
-fn load_app_icon() -> egui::IconData {
-    let bytes = include_bytes!("ui/icons/app_icon.png");
-    let image = image::load_from_memory(bytes)
-        .expect("failed to decode app icon")
-        .into_rgba8();
-    let (width, height) = image.dimensions();
-    egui::IconData {
-        rgba: image.into_raw(),
-        width,
-        height,
-    }
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState {
+            db,
+            registry: registry.clone(),
+            queue: queue.clone(),
+            max_concurrent: max_concurrent.clone(),
+        })
+        .setup(move |app| {
+            transfer::worker::spawn_worker(
+                queue.clone(),
+                registry.clone(),
+                tauri::async_runtime::handle().inner().clone(),
+                max_concurrent.clone(),
+                app.handle().clone(),
+            );
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::connect,
+            commands::disconnect,
+            commands::remote_list,
+            commands::remote_stat,
+            commands::remote_mkdir,
+            commands::remote_rename,
+            commands::remote_delete,
+            commands::local_list,
+            commands::local_home_dir,
+            commands::local_mkdir,
+            commands::local_rename,
+            commands::local_delete,
+            commands::local_open,
+            commands::local_move_into,
+            commands::enqueue_transfer,
+            commands::list_tasks,
+            commands::pause_task,
+            commands::resume_task,
+            commands::cancel_task,
+            commands::remove_task,
+            commands::set_max_concurrent,
+            commands::list_sites,
+            commands::save_site,
+            commands::delete_site,
+            commands::list_bookmarks,
+            commands::add_bookmark,
+            commands::remove_bookmark,
+            commands::list_history,
+            commands::clear_history,
+            commands::find_history_conn_id,
+            commands::get_pref,
+            commands::set_pref,
+            commands::delete_password,
+            commands::app_data_dir,
+            commands::platform_info,
+        ])
+        .run(tauri::generate_context!())
+        .expect("failed to start Wherry");
 }

@@ -43,6 +43,7 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             host        TEXT NOT NULL,
             port        INTEGER NOT NULL,
             username    TEXT NOT NULL,
+            password    TEXT,
             key_path    TEXT,
             folder      TEXT,
             note        TEXT
@@ -69,8 +70,7 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
     ",
     )?;
 
-    // Миграция: старые базы созданы без conn_id/protocol/key_path — добавляем,
-    // если их ещё нет (ошибку "duplicate column" просто игнорируем).
+    // Миграции
     let _ = conn.execute("ALTER TABLE connection_history ADD COLUMN conn_id TEXT", []);
     let _ = conn.execute(
         "ALTER TABLE connection_history ADD COLUMN protocol TEXT NOT NULL DEFAULT 'sftp'",
@@ -80,6 +80,7 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
         "ALTER TABLE connection_history ADD COLUMN key_path TEXT",
         [],
     );
+    let _ = conn.execute("ALTER TABLE sites ADD COLUMN password TEXT", []);
     // На случай старых записей без уникальности (host,port,username) — оставляем
     // только самую свежую строку на каждую цель перед созданием индекса.
     conn.execute(
