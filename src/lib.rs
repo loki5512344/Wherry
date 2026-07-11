@@ -99,7 +99,7 @@ pub fn run() {
                 let handle2 = handle.clone();
                 let label2 = label.clone();
                 window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api: _, .. } = event
+                    if let tauri::WindowEvent::CloseRequested { .. } = event
                         && let Some(win) = handle2.get_webview_window(&label2)
                     {
                         commands::save_window_state_internal(&win, &db2);

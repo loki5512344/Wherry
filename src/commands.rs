@@ -501,7 +501,7 @@ pub async fn new_window(
     let app_handle = app_handle.clone();
     let label_clone = label.clone();
     window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api: _, .. } = event
+        if let tauri::WindowEvent::CloseRequested { .. } = event
             && let Some(win) = app_handle.get_webview_window(&label_clone)
         {
             save_window_state_internal(&win, &db);
