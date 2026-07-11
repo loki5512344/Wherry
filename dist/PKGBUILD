@@ -1,5 +1,4 @@
 # Maintainer: loki5512344 <dev14dbq@gmail.com>
-# Contributor: Your name <your@email.com>
 
 pkgname=wherry
 pkgver=0.1.0
@@ -9,37 +8,42 @@ arch=('x86_64')
 url='https://github.com/loki5512344/Wherry'
 license=('GPL3')
 depends=(
-  'webkit2gtk-4.1'
+  'gcc-libs'
   'gtk3'
+  'webkit2gtk-4.1'
   'libsoup3'
+  'cairo'
+  'gdk-pixbuf2'
+  'glib2'
   'librsvg'
+  'openssl'
+  'libssh2'
   'libappindicator-gtk3'
   'dbus'
-  'openssl'
 )
-makedepends=(
-  'cargo'
-  'rust'
-  'patchelf'
-)
+makedepends=('cargo' 'pkg-config' 'patchelf')
 source=("https://github.com/loki5512344/Wherry/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 _repodir="Wherry-$pkgver"
 
 prepare() {
-  cd "$srcdir/$_repodir/src"
+  cd "$srcdir/$_repodir"
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
 }
 
 build() {
-  cd "$srcdir/$_repodir/src"
+  cd "$srcdir/$_repodir"
   export CARGO_TARGET_DIR="$srcdir/target"
-  cargo build --release
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="/usr/bin/cc"
+  cargo build --release --frozen
 }
 
 package() {
-  cd "$srcdir/$_repodir/src"
-  install -Dm755 target/release/wherry "$pkgdir/usr/bin/wherry"
-  install -Dm644 icons/128x128.png "$pkgdir/usr/share/pixmaps/wherry.png"
-  install -Dm644 "$srcdir/$_repodir/dist/wherry.desktop" "$pkgdir/usr/share/applications/wherry.desktop"
+  cd "$srcdir/$_repodir"
+  install -Dm755 "$srcdir/target/release/wherry" "$pkgdir/usr/bin/wherry"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 src/icons/128x128.png "$pkgdir/usr/share/pixmaps/wherry.png"
+  install -Dm644 dist/wherry.desktop "$pkgdir/usr/share/applications/wherry.desktop"
 }
