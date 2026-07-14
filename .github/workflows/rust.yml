@@ -105,8 +105,8 @@ jobs:
           install -Dm644 LICENSE pkg/usr/share/licenses/wherry/LICENSE
           install -Dm644 src/icons/128x128.png pkg/usr/share/pixmaps/wherry.png
           install -Dm644 dist/wherry.desktop pkg/usr/share/applications/wherry.desktop
-          tar czf wherry-v${{ github.ref_name }}-x86_64-linux.tar.gz -C pkg .
+          tar czf wherry-${{ github.ref_name }}-x86_64-linux.tar.gz -C pkg .
       - uses: softprops/action-gh-release@v2
         with:
-          files: wherry-v${{ github.ref_name }}-x86_64-linux.tar.gz
+          files: wherry-${{ github.ref_name }}-x86_64-linux.tar.gz
           generate_release_notes: true
