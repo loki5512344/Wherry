@@ -18,10 +18,9 @@ depends=(
   'librsvg'
   'openssl'
   'libssh2'
-  'libappindicator-gtk3'
   'dbus'
 )
-makedepends=('cargo' 'pkg-config' 'patchelf')
+makedepends=('cargo' 'pkg-config')
 source=("https://github.com/loki5512344/Wherry/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
