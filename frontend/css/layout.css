@@ -649,8 +649,42 @@ html[data-platform="linux"] ::-webkit-scrollbar {
   height: 7px;
 }
 
+/* ── Pane resize handle ──────────────────────────────────────────────── */
+.pane-resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  margin: 0 -2px;
+  transition: background 0.12s var(--ease-out);
+}
+.pane-resize-handle:hover,
+.pane-resize-handle:active {
+  background: var(--accent-soft);
+}
+.pane-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 36px;
+  background: var(--border);
+  border-radius: 1px;
+  transition: background 0.12s var(--ease-out), height 0.12s var(--ease-out);
+}
+.pane-resize-handle:hover::after,
+.pane-resize-handle:active::after {
+  background: var(--accent);
+  height: 48px;
+}
+
 /* ── Split-pane grid ─────────────────────────────────────────────────── */
 .pane-grid {
+  display: grid;
   flex: 1;
   min-height: 0;
 }
@@ -662,9 +696,6 @@ html[data-platform="linux"] ::-webkit-scrollbar {
   background: var(--bg-content);
   position: relative;
   overflow: hidden;
-}
-.pane-cell + .pane-cell {
-  border-left: 1px solid var(--border);
 }
 .pane-cell.drop-zone {
   background: var(--bg-panel);

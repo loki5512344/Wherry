@@ -59,8 +59,13 @@ export async function spawnConnect(params) {
     state.activeTabId = connectionId;
     state.lastRemoteTabId = connectionId;
     state.activePane = "remote";
-    // Replace first pane with new connection (click = switch, not split)
-    state.layout.panes[0].tabId = connectionId;
+    // Open dual-pane: local (left) + remote (right)
+    if (state.layout.panes.length === 1 && state.layout.panes[0].tabId === null) {
+      state.layout.panes.push({ id: `pane-${Date.now()}`, tabId: connectionId, flex: 1 });
+      state.layout.panes[0].flex = 1;
+    } else {
+      state.layout.panes[0].tabId = connectionId;
+    }
     state.connectLoading = false;
     state.showConnectDialog = false;
     state.statusMessage = `Connected to ${params.host}`;

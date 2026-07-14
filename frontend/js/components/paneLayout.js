@@ -12,6 +12,8 @@ const paneRefs = new Map();
 function paneKind(p) { return p.tabId ?? "local"; }
 function paneLabel(p) { return p.tabId === null ? "Local" : (state.tabs.find((t) => t.id === p.tabId)?.label ?? "?"); }
 
+function ensureFlex(p) { if (p.flex == null) p.flex = 1; return p; }
+
 /* Render the full pane grid */
 export function renderPanes(container) {
   container.innerHTML = "";
@@ -19,10 +21,9 @@ export function renderPanes(container) {
 
   const wrap = document.createElement("div");
   wrap.className = "pane-grid";
-  wrap.style.cssText = `display:grid;grid-template-columns:${buildGrid()};flex:1;min-height:0;`;
+  applyGrid(wrap);
   wrap.addEventListener("dragover", (e) => { e.preventDefault(); });
   wrap.addEventListener("drop", (e) => {
-    // Drop on empty area (after last pane) → append
     e.preventDefault();
     const tabId = e.dataTransfer.getData("tab-id");
     if (!tabId) return;
@@ -31,13 +32,91 @@ export function renderPanes(container) {
   });
   container.appendChild(wrap);
 
-  for (const pane of state.layout.panes) {
-    const cell = createPaneCell(pane);
+  for (let i = 0; i < state.layout.panes.length; i++) {
+    if (i > 0) {
+      const handle = createResizeHandle(i - 1);
+      wrap.appendChild(handle);
+    }
+    const cell = createPaneCell(state.layout.panes[i]);
     wrap.appendChild(cell);
   }
 }
 
+function applyGrid(wrap) {
+  const n = state.layout.panes.length;
+  const totalFlex = state.layout.panes.reduce((s, p) => s + (p.flex || 1), 0);
+  const cols = state.layout.panes.map((p) => `${((p.flex || 1) / totalFlex * 100).toFixed(2)}fr`).join(" ");
+  wrap.style.cssText = `display:grid;grid-template-columns:${n > 1 ? cols : "1fr"};flex:1;min-height:0;`;
+}
+
+function createResizeHandle(index) {
+  const div = document.createElement("div");
+  div.className = "pane-resize-handle";
+  div.dataset.index = index;
+  div.addEventListener("mousedown", onResizeStart);
+  return div;
+}
+
+let resizing = null;
+
+function onResizeStart(e) {
+  e.preventDefault();
+  const handle = e.currentTarget;
+  const index = parseInt(handle.dataset.index);
+  const wrap = handle.closest(".pane-grid");
+  const rect = wrap.getBoundingClientRect();
+  const startX = e.clientX;
+
+  const panes = state.layout.panes;
+  const totalFlex = panes.reduce((s, p) => s + (p.flex || 1), 0);
+  const currentPct = panes.map((p) => (p.flex || 1) / totalFlex);
+
+  resizing = { index, startX, wrap, rect, panes, currentPct, totalFlex };
+
+  document.addEventListener("mousemove", onResizeMove);
+  document.addEventListener("mouseup", onResizeEnd);
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+}
+
+function onResizeMove(e) {
+  if (!resizing) return;
+  const { index, startX, rect, panes, currentPct } = resizing;
+  const dx = e.clientX - startX;
+  const totalWidth = rect.width;
+  if (totalWidth <= 0) return;
+
+  const leftPct = currentPct[index];
+  const rightPct = currentPct[index + 1];
+  const pctChange = dx / totalWidth;
+
+  const newLeft = Math.max(0.1, Math.min(0.9, leftPct + pctChange));
+  const newRight = Math.max(0.1, Math.min(0.9, rightPct - pctChange));
+  if (newLeft + newRight < 0.2) return;
+
+  const newTotal = newLeft + newRight + currentPct.slice(0, index).reduce((s, v) => s + v, 0) + currentPct.slice(index + 2).reduce((s, v) => s + v, 0);
+
+  const scale = currentPct.reduce((a, b) => a + b, 0) / newTotal;
+  for (let i = 0; i < panes.length; i++) {
+    if (i === index) panes[i].flex = newLeft * scale;
+    else if (i === index + 1) panes[i].flex = newRight * scale;
+    else panes[i].flex = currentPct[i] * scale;
+  }
+
+  const wrap = resizing.wrap;
+  applyGrid(wrap);
+}
+
+function onResizeEnd() {
+  resizing = null;
+  document.removeEventListener("mousemove", onResizeMove);
+  document.removeEventListener("mouseup", onResizeEnd);
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+}
+
 function createPaneCell(pane) {
+  ensureFlex(pane);
   const cell = document.createElement("div");
   cell.className = "pane-cell";
   cell.dataset.paneId = pane.id;
@@ -60,14 +139,12 @@ function createPaneCell(pane) {
   header.addEventListener("dragend", onHeaderDragEnd);
 
   // Close btn
-  if (state.layout.panes.length > 1) {
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "pane-close-btn";
-    closeBtn.title = "Close";
-    closeBtn.innerHTML = iconMarkup("close", 13);
-    closeBtn.addEventListener("click", (e) => { e.stopPropagation(); closePane(pane.id); });
-    header.appendChild(closeBtn);
-  }
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "pane-close-btn";
+  closeBtn.title = "Close pane";
+  closeBtn.innerHTML = iconMarkup("close", 13);
+  closeBtn.addEventListener("click", (e) => { e.stopPropagation(); closePane(pane.id); });
+  header.appendChild(closeBtn);
 
   // Body
   const body = document.createElement("div");
@@ -94,12 +171,6 @@ function createPaneCell(pane) {
   return cell;
 }
 
-function buildGrid() {
-  const n = state.layout.panes.length;
-  if (n <= 1) return "1fr";
-  return state.layout.panes.map(() => "1fr").join(" ");
-}
-
 /* In-place update (avoids full rebuild on every tick) */
 export function updatePanes(container) {
   const wrap = container.querySelector(".pane-grid");
@@ -110,7 +181,7 @@ export function updatePanes(container) {
   const expected = state.layout.panes.map((p) => p.id);
   if (ids.join(",") !== expected.join(",")) return renderPanes(container);
 
-  wrap.style.gridTemplateColumns = buildGrid();
+  applyGrid(wrap);
 
   for (const pane of state.layout.panes) {
     const ref = paneRefs.get(pane.id);
@@ -127,20 +198,10 @@ export function updatePanes(container) {
 
 // ── Drag & Drop: tab bar → pane ─────────────────────────────────────────
 
-/* Tab bar tabs become draggable — set data "tab-id" on dragstart. Pane cells
-   get visual drop zones (left/right/top/bottom/center), but two rules keep
-   it from feeling random:
-     1. The pane already showing the dragged tab never offers itself as a
-        target -- there's nowhere sensible to put a tab inside its own pane.
-     2. Every other pane needs a beat of sustained hover (HOVER_OPEN_DELAY)
-        before it "opens" as a drop target. Zones appearing the instant the
-        pointer crosses into a pane read as jumpy; the pause makes hovering
-        read as an intentional choice instead. */
-
-let activeZone = null; // "<paneId>-<zone>" of the currently shown zone overlay
-let holdTimer = null;  // pending "open" timer for the pane below
-let holdPaneId = null; // pane the hold timer is counting for
-let openPaneId = null;  // pane that passed the hold and is now a live drop target
+let activeZone = null;
+let holdTimer = null;
+let holdPaneId = null;
+let openPaneId = null;
 
 function computeZone(cell, clientX, clientY) {
   const rect = cell.getBoundingClientRect();
@@ -193,10 +254,6 @@ function onPaneDragOver(e) {
   const paneId = cell.dataset.paneId;
   const pane = state.layout.panes.find((p) => p.id === paneId);
 
-  // Dragging a tab over the pane that already shows it -- never a valid
-  // target. Stop the event here so it doesn't bubble to the grid wrap's
-  // unconditional preventDefault(), which would otherwise still allow a
-  // drop (routed to the "append at end" handler) at this pointer position.
   if (pane && pane.tabId === getDraggedTabId()) {
     e.stopPropagation();
     return;
@@ -246,7 +303,7 @@ function onPaneDrop(e) {
   const wasOpen = openPaneId === paneId;
   const zone = cell.dataset.dropZone || "center";
   resetPaneDrag();
-  if (!tabId || !wasOpen) return; // released before this pane "opened" -- ignore
+  if (!tabId || !wasOpen) return;
 
   const idx = state.layout.panes.findIndex((p) => p.id === paneId);
   if (idx === -1) return;
@@ -255,9 +312,9 @@ function onPaneDrop(e) {
   switch (zone) {
     case "left": addPane(tid, idx); break;
     case "right": addPane(tid, idx + 1); break;
-    case "top": addPane(tid, idx + 1); break;     // in flat layout, left/right suffices
-    case "bottom": addPane(tid, idx + 1); break;   // top/bottom = same as right
-    case "center": // replace this pane (but don't add duplicate)
+    case "top": addPane(tid, idx + 1); break;
+    case "bottom": addPane(tid, idx + 1); break;
+    case "center":
       if (!state.layout.panes.some((p) => p.tabId === tid && p.id !== paneId)) {
         state.layout.panes[idx].tabId = tid;
       }
@@ -266,8 +323,6 @@ function onPaneDrop(e) {
   notify();
 }
 
-// A drag can end (dropped, cancelled, Escaped) outside every pane cell --
-// clean up hold/zone state unconditionally so it never gets stuck.
 window.addEventListener("dragend", resetPaneDrag);
 
 // ── Header drag (reorder) ───────────────────────────────────────────────
@@ -292,28 +347,28 @@ function parsedTabId(raw) {
 }
 
 function addPane(tabId, index) {
-  // If this tab is already in another pane, remove it
   const existing = state.layout.panes.findIndex((p) => p.tabId === tabId);
   if (existing !== -1) {
     state.layout.panes.splice(existing, 1);
     if (existing < index) index--;
   }
-  state.layout.panes.splice(index, 0, { id: `pane-${Date.now()}`, tabId });
+  state.layout.panes.splice(index, 0, { id: `pane-${Date.now()}`, tabId, flex: 1 });
 }
 
 function closePane(paneId) {
-  if (state.layout.panes.length <= 1) return;
+  const pane = state.layout.panes.find((p) => p.id === paneId);
+  if (!pane) return;
+  const isLastRemote = pane.tabId !== null && state.layout.panes.filter((p) => p.tabId !== null).length === 1;
   state.layout.panes = state.layout.panes.filter((p) => p.id !== paneId);
+  if (state.layout.panes.length === 0) {
+    state.layout.panes.push({ id: `pane-${Date.now()}`, tabId: null, flex: 1 });
+  }
   notify();
 }
 
 // ── Public API: open a tab in a pane from outside ───────────────────────
 export function openInPane(tabId) {
-  // If already visible, do nothing (it's already in some pane)
   if (state.layout.panes.some((p) => p.tabId === tabId)) return;
-
-  // Replace the first pane (single-pane UX — click = switch, not split)
-  // Splitting only happens via drag-and-drop into edge zones.
   state.layout.panes[0].tabId = tabId;
   notify();
 }
