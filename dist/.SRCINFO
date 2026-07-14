@@ -19,6 +19,6 @@ pkgbase = wherry
 	depends = libssh2
 	depends = dbus
 	source = https://github.com/loki5512344/Wherry/archive/refs/tags/v0.1.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 2c9ee91948fdad352ba797ce8652bf626797769a74e2707504184f541eecf0ab
 
 pkgname = wherry
